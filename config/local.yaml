@@ -1,0 +1,42 @@
+APP_ENV: local  # local, dev, prod
+JWT:
+  JWT_PUBLIC_KEY_PATH: /app/secret/jwt_public.pem
+  JWT_PRIVATE_KEY_PATH: /app/secret/jwt_private.pem
+  JWT_EXPIRATION: 240 # Expiration time in hours
+  JWT_ALGORITHM: RS256 # support only RS256,RS384,RS512
+LOGGER:
+  LOG_LEVEL: debug # debug, info, warn, error
+  LOG_TYPE: text # text, json
+  LOG_DIR: /app/logs/ # the application log directory
+  LOG_FILE: delivery.log # the application log file name
+DATABASE:
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_USER: postgres
+  DB_PASS: pass
+  DB_NAME: saas_db
+  DB_MAIN_SCHEMA: public
+REDIS:
+  REDIS_HOST: delivery-redis
+  REDIS_PORT: 6379
+  REDIS_PASS: secret
+  REDIS_DB: 0
+HTTP_SERVER:
+  APP_ADDRESS: localhost
+  APP_REQUEST_TIMEOUT: 180s
+  APP_PORT: 6060
+QUEUE:
+  QUEUE_HOST: nats
+  QUEUE_PORT: 4222
+  QUEUE_NAME: delivery-backend
+  QUEUE_RETRY_TIMEOUT: 5s
+  QUEUE_RECONNECT_TIMEOUT: 2s
+  QUEUE_STREAM_NAME: notification-service
+OAUTH:
+  GOOGLE_CLIENT_ID: "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
+  FACEBOOK_APP_ID: "YOUR_FACEBOOK_APP_ID"
+  FACEBOOK_APP_SECRET: "YOUR_FACEBOOK_APP_SECRET"
+  APPLE_CLIENT_ID: "com.yourcompany.yourapp"
+TENANT_CACHE:
+  TENANT_CACHE_TTL: "5m"
+  TENANT_CACHE_KEY_PREFIX: "my-app"

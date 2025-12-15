@@ -1,0 +1,19 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.debug
+    command:
+      - "dlv"
+      - "exec"
+      - "/app/delivery"
+      - "--headless"
+      - "--listen=:2345"
+      - "--api-version=2"
+      - "--accept-multiclient"
+      - "--log"
+    ports:
+      - "6060:6060"
+      - "2345:2345"
+    environment:
+      - APP_ENV=local

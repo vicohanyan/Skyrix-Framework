@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.7
+
+########################
+# builder (debug)
+########################
+FROM golang:1.25.1-bookworm AS builder
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    libaom-dev git build-essential pkg-config \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# Debug build for the HTTP service
+RUN go build -gcflags="all=-N -l" -trimpath -o /app/delivery ./cmd/http
+
+# Optional: console (usually not needed for debug, but can be handy)
+RUN go build -gcflags="all=-N -l" -trimpath -o /app/cobra ./cmd/console
+
+
+########################
+# runtime (debug)
+########################
+FROM golang:1.25.1-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    libaom-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+# Install Delve
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+COPY --from=builder /app/delivery /app/delivery
+COPY --from=builder /app/cobra    /app/cobra
+
+RUN mkdir -p /app/logs /app/entrypoints /app/secret
+
+EXPOSE 6060 2345
+
+ENTRYPOINT ["/app/entrypoints/app-entrypoint.sh"]
+CMD ["/app/delivery"]
