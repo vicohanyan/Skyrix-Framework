@@ -1,0 +1,10 @@
+# IDE
+.idea/
+
+# Logs
+logs/*.log
+
+# Secrets / sensitive
+secrets/
+*.env
+.env
