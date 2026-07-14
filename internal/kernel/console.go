@@ -3,7 +3,8 @@ package kernel
 import (
 	"context"
 
-	scaffoldconsole "skyrix/internal/engine/scaffold/console"
+	"skyrix/internal/commands"
+	"skyrix/internal/engine/scaffold"
 	"skyrix/internal/providers"
 
 	"github.com/spf13/cobra"
@@ -14,14 +15,21 @@ import (
 type ConsoleApp struct {
 	Kernel   *Kernel
 	Jobs     *providers.Jobs
-	Commands *scaffoldconsole.Commands
+	Commands *commands.Commands
+	Scaffold *scaffold.Commands
 }
 
-func NewConsoleApp(kernel *Kernel, jobs *providers.Jobs, commands *scaffoldconsole.Commands) *ConsoleApp {
+func NewConsoleApp(
+	kernel *Kernel,
+	jobs *providers.Jobs,
+	applicationCommands *commands.Commands,
+	scaffoldCommands *scaffold.Commands,
+) *ConsoleApp {
 	return &ConsoleApp{
 		Kernel:   kernel,
 		Jobs:     jobs,
-		Commands: commands,
+		Commands: applicationCommands,
+		Scaffold: scaffoldCommands,
 	}
 }
 
@@ -41,14 +49,30 @@ func (c *ConsoleApp) newRootCommand() *cobra.Command {
 This console is powered by the Cobra library (github.com/spf13/cobra).`,
 	}
 
-	// Register all commands from the Commands provider.
-	if c.Commands != nil && len(c.Commands.All) > 0 {
-		for _, cmd := range c.Commands.All {
-			if cmd != nil {
-				root.AddCommand(cmd)
-			}
-		}
-	}
+	addApplicationCommands(root, c.Commands)
+	addScaffoldCommands(root, c.Scaffold)
 
 	return root
+}
+
+func addApplicationCommands(root *cobra.Command, commandSet *commands.Commands) {
+	if commandSet == nil {
+		return
+	}
+	for _, command := range commandSet.All {
+		if command != nil {
+			root.AddCommand(command)
+		}
+	}
+}
+
+func addScaffoldCommands(root *cobra.Command, commandSet *scaffold.Commands) {
+	if commandSet == nil {
+		return
+	}
+	for _, command := range commandSet.All {
+		if command != nil {
+			root.AddCommand(command)
+		}
+	}
 }

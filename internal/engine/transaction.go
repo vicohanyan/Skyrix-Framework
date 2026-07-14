@@ -12,8 +12,9 @@ type TxManager struct {
 	Logger logger.Interface
 }
 
-// NewTxManager constructs a TransactionManager backed by the provided Database and logger.
-func NewTxManager(db *Database, logger logger.Interface) TransactionManager {
+// NewTxManager constructs a TxManager backed by the provided Database and logger.
+// Deprecated: Use Workflow SAGA package
+func NewTxManager(db *Database, logger logger.Interface) *TxManager {
 	return &TxManager{
 		DB:     db,
 		Logger: logger,

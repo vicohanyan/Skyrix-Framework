@@ -7,27 +7,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Commands is a bundle of all CLI commands exposed by the application.
+// Commands contains application-specific console commands.
 type Commands struct {
-	Hello *commands.HelloCommand
-
-	// All is the final list of cobra commands registered in the root CLI.
 	All []*cobra.Command
 }
 
-// ProvideCommands assembles the command list.
-// Keep this function as the single place that defines command registration order.
-func ProvideCommands(hello *commands.HelloCommand) *Commands {
-	out := &Commands{
-		Hello: hello,
-	}
-	out.All = []*cobra.Command{
+// NewCommands assembles application-specific console commands.
+func NewCommands(hello *commands.HelloCommand) *Commands {
+	return &Commands{All: []*cobra.Command{
 		hello.ToCobraCommand(),
-	}
-	return out
+	}}
 }
 
-var CommandProviderSet = wire.NewSet(
-	commands.NewHelloCommand,
-	ProvideCommands,
+// ProviderSet contains application-specific console command providers.
+var ProviderSet = wire.NewSet(
+	commands.NewHelloCommand(),
+	NewCommands,
 )

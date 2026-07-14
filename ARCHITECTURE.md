@@ -100,7 +100,24 @@ Assembly is responsible for:
 - dependency injection wiring (Wire-based),
 - HTTP routes/handlers registration.
 
-Providers act as explicit integration points between internal and domain packages.
+`internal/providers` is reserved for application runtime composition and
+configuration: domains, handlers, jobs, middleware, infrastructure, and
+platform components. Console commands are composed separately and are not
+registered in this package.
+
+### Console Command Graphs
+
+The console application combines two independent Wire graphs:
+
+- `internal/commands.ProviderSet` — application-specific commands maintained by
+  the service;
+- `internal/engine/scaffold.ProviderSet` — framework-internal maintenance and
+  scaffolding commands.
+
+Both graphs are included by `cmd/console/wire.go` and are passed separately to
+`kernel.ConsoleApp`, which mounts both command lists on the Cobra root. This
+keeps user commands independent from framework tooling while preserving
+explicit compile-time dependency injection.
 
 ---
 

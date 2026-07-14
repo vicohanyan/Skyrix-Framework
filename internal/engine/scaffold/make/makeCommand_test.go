@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"skyrix/internal/engine/scaffold"
+	"skyrix/internal/engine/scaffold/internal/support"
 
 	"github.com/spf13/cobra"
 )
@@ -80,7 +80,7 @@ func TestNormalizeScaffoldName(t *testing.T) {
 		{"Delivery2", "delivery2", "Delivery2"},
 	}
 	for _, test := range tests {
-		name, err := scaffold.NormalizeName(test.raw)
+		name, err := support.NormalizeName(test.raw)
 		if err != nil {
 			t.Fatalf("normalize %q error = %v", test.raw, err)
 		}

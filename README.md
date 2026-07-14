@@ -145,6 +145,29 @@ docker compose exec app /app/cobra route-zones:import \
 The migration command applies GORM migrations, required PostgreSQL extensions,
 and partial indexes. Delivery-zone import requires PostGIS.
 
+### Adding console commands
+
+Console commands are assembled from two independent Wire graphs:
+
+- `internal/commands.ProviderSet` contains application-specific commands;
+- `internal/engine/scaffold.ProviderSet` contains framework maintenance and
+  scaffolding commands.
+
+To add an application command, place it in `internal/commands`, add its
+constructor to `internal/commands/provider.go`, accept it in `NewCommands`, and
+append its Cobra command to `Commands.All`:
+
+```go
+var ProviderSet = wire.NewSet(
+    NewHelloCommand,
+    NewImportOrdersCommand,
+    NewCommands,
+)
+```
+
+Both command graphs are connected in `cmd/console/wire.go`. Application
+commands must not be registered in `internal/providers`.
+
 ## HTTP endpoints
 
 System endpoints:
@@ -232,6 +255,8 @@ infra/postgres/           PostgreSQL/PostGIS image
 internal/adapter/         external service adapters
 internal/domain/          delivery domain modules
 internal/engine/          shared runtime infrastructure
+internal/engine/scaffold/ framework maintenance and scaffolding CLI commands
+internal/commands/        application-specific Cobra commands
 internal/handlers/        HTTP handlers
 internal/jobs/            background jobs
 internal/router/          HTTP route composition

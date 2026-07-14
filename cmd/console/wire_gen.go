@@ -10,7 +10,7 @@ import (
 	"skyrix/internal/commands"
 	"skyrix/internal/database"
 	"skyrix/internal/engine"
-	"skyrix/internal/engine/scaffold/console"
+	"skyrix/internal/engine/scaffold"
 	"skyrix/internal/engine/scaffold/db"
 	"skyrix/internal/engine/scaffold/eventbus"
 	"skyrix/internal/engine/scaffold/job"
@@ -50,6 +50,7 @@ func buildConsoleApp() (*kernel.ConsoleApp, func(), error) {
 	jobsRegistry := providers.ProvideRegisteredJobsRegistry(registry, providersJobs)
 	kernelKernel := kernel.NewKernel(config, loggerInterface, engineDatabase, engineRedis, jobsRegistry)
 	helloCommand := commands.NewHelloCommand()
+	commandsCommands := commands.NewCommands(helloCommand)
 	dbSeeder := database.NewDBSeeder(engineDatabase, loggerInterface)
 	dbMigrator := database.NewDBMigrator(engineDatabase, loggerInterface, dbSeeder)
 	dbAutoMigrateCommand := db.NewDBAutoMigrateCommand(dbMigrator)
@@ -58,8 +59,8 @@ func buildConsoleApp() (*kernel.ConsoleApp, func(), error) {
 	jobsRunCommand := job.NewJobsRunCommand(jobsRegistry)
 	eventBusCommand := eventbus.NewEventBusCommand()
 	makeCommand := make2.NewMakeCommand()
-	consoleCommands := console.NewCommands(helloCommand, dbCommand, jobsRunCommand, eventBusCommand, makeCommand)
-	consoleApp := kernel.NewConsoleApp(kernelKernel, providersJobs, consoleCommands)
+	scaffoldCommands := scaffold.NewCommands(dbCommand, jobsRunCommand, eventBusCommand, makeCommand)
+	consoleApp := kernel.NewConsoleApp(kernelKernel, providersJobs, commandsCommands, scaffoldCommands)
 	return consoleApp, func() {
 		cleanup2()
 		cleanup()

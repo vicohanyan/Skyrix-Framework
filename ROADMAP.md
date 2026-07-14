@@ -92,15 +92,21 @@ but outside of `internal/`, preparing for future extraction.
 
 **Goal:** Reduce manual setup and enforce consistency.
 
+### Available tooling
+
+- EventBus transport initialization and module scaffolding through
+  `eventbus init/create/list/remove`.
+- Domain, repository, and service scaffolding through
+  `make domain/repository/service`.
+- Database migration and seed command groups.
+- Synchronous registered-job execution.
+
 ### Planned tooling
 
-- CLI commands for framework operations:
-  - Service initialization
-  - Configuration generation
-  - RSA key generation
-  - Module scaffolding
-- Instance / environment setup helpers
-- Optional automation for local and development workflows
+- Service and environment initialization.
+- Configuration generation.
+- RSA key generation.
+- Additional local-development automation.
 
 The CLI is intended as **developer tooling**, not a mandatory runtime dependency.
 

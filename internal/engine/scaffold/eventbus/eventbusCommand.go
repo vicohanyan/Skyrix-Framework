@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"skyrix/internal/engine/scaffold"
+	"skyrix/internal/engine/scaffold/support"
 
 	"github.com/spf13/cobra"
 )
@@ -41,7 +41,7 @@ func (c *EventBusCommand) ToCobraCommand() *cobra.Command {
 			Short: "Initialize EventBus transport scaffolding",
 			Args:  cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, _ []string) error {
-				root, err := scaffold.ProjectRoot(c.ProjectRoot)
+				root, err := support.ProjectRoot(c.ProjectRoot)
 				if err != nil {
 					return err
 				}
@@ -67,11 +67,11 @@ func (c *EventBusCommand) ToCobraCommand() *cobra.Command {
 			Short: "Create an EventBus transport module",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				name, err := scaffold.NormalizeName(args[0])
+				name, err := support.NormalizeName(args[0])
 				if err != nil {
 					return err
 				}
-				root, err := scaffold.ProjectRoot(c.ProjectRoot)
+				root, err := support.ProjectRoot(c.ProjectRoot)
 				if err != nil {
 					return err
 				}
@@ -101,11 +101,11 @@ func (c *EventBusCommand) ToCobraCommand() *cobra.Command {
 				// ProviderSet contains the module's EventBus transport providers.
 				var ProviderSet = wire.NewSet()
 				`, eventBusGeneratedHeader, name.Package, name.Type, name.Package)
-				if err := scaffold.WriteNewFile(filepath.Join(moduleDir, "provider.go"), []byte(provider)); err != nil {
+				if err := support.WriteNewFile(filepath.Join(moduleDir, "provider.go"), []byte(provider)); err != nil {
 					_ = os.RemoveAll(moduleDir)
 					return err
 				}
-				if err := scaffold.WriteNewFile(filepath.Join(moduleDir, eventBusModuleMarker), []byte(name.Package+"\n")); err != nil {
+				if err := support.WriteNewFile(filepath.Join(moduleDir, eventBusModuleMarker), []byte(name.Package+"\n")); err != nil {
 					_ = os.RemoveAll(moduleDir)
 					return err
 				}
@@ -122,7 +122,7 @@ func (c *EventBusCommand) ToCobraCommand() *cobra.Command {
 			Short: "List generated EventBus transport modules",
 			Args:  cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, _ []string) error {
-				root, err := scaffold.ProjectRoot(c.ProjectRoot)
+				root, err := support.ProjectRoot(c.ProjectRoot)
 				if err != nil {
 					return err
 				}
@@ -145,11 +145,11 @@ func (c *EventBusCommand) ToCobraCommand() *cobra.Command {
 			Short: "Remove a generated EventBus transport module",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				name, err := scaffold.NormalizeName(args[0])
+				name, err := support.NormalizeName(args[0])
 				if err != nil {
 					return err
 				}
-				root, err := scaffold.ProjectRoot(c.ProjectRoot)
+				root, err := support.ProjectRoot(c.ProjectRoot)
 				if err != nil {
 					return err
 				}
@@ -215,7 +215,7 @@ func (c *EventBusCommand) writeEventBusRegistration(root string) error {
 	if err != nil {
 		return err
 	}
-	module, err := scaffold.ModulePath(root)
+	module, err := support.ModulePath(root)
 	if err != nil {
 		return err
 	}

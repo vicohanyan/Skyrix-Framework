@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"skyrix/internal/engine/scaffold"
+	"skyrix/internal/engine/scaffold/internal/support"
 
 	"github.com/spf13/cobra"
 )
@@ -65,13 +65,13 @@ func (c *MakeCommand) ToCobraCommand() *cobra.Command {
 				// ProviderSet contains the domain providers.
 				var ProviderSet = wire.NewSet()
 				`, name.Package, name.Type, name.Package)
-				if err := scaffold.WriteNewFile(filepath.Join(domainRoot, "provider.go"), []byte(provider)); err != nil {
+				if err := support.WriteNewFile(filepath.Join(domainRoot, "provider.go"), []byte(provider)); err != nil {
 					_ = os.RemoveAll(domainRoot)
 					return err
 				}
 				for _, directory := range directories {
 					doc := fmt.Sprintf("// Package %s contains %s domain scaffolding.\npackage %s\n", directory.packageName, name.Type, directory.packageName)
-					if err := scaffold.WriteNewFile(filepath.Join(domainRoot, directory.path, "doc.go"), []byte(doc)); err != nil {
+					if err := support.WriteNewFile(filepath.Join(domainRoot, directory.path, "doc.go"), []byte(doc)); err != nil {
 						_ = os.RemoveAll(domainRoot)
 						return err
 					}
@@ -103,7 +103,7 @@ func (c *MakeCommand) ToCobraCommand() *cobra.Command {
 				}
 				`, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type)
 				path := filepath.Join(domainRoot(root, name.Package), "repository", name.Package+"Repository.go")
-				if err := scaffold.WriteNewFile(path, []byte(content)); err != nil {
+				if err := support.WriteNewFile(path, []byte(content)); err != nil {
 					return err
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "repository created: %s\n", name.Package)
@@ -133,7 +133,7 @@ func (c *MakeCommand) ToCobraCommand() *cobra.Command {
 				}
 				`, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type)
 				path := filepath.Join(domainRoot(root, name.Package), "services", name.Package+"Service.go")
-				if err := scaffold.WriteNewFile(path, []byte(content)); err != nil {
+				if err := support.WriteNewFile(path, []byte(content)); err != nil {
 					return err
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "service created: %s\n", name.Package)
@@ -144,12 +144,12 @@ func (c *MakeCommand) ToCobraCommand() *cobra.Command {
 	return command
 }
 
-func (c *MakeCommand) resolve(raw string) (scaffold.Name, string, error) {
-	name, err := scaffold.NormalizeName(raw)
+func (c *MakeCommand) resolve(raw string) (support.Name, string, error) {
+	name, err := support.NormalizeName(raw)
 	if err != nil {
-		return scaffold.Name{}, "", err
+		return support.Name{}, "", err
 	}
-	root, err := scaffold.ProjectRoot(c.ProjectRoot)
+	root, err := support.ProjectRoot(c.ProjectRoot)
 	return name, root, err
 }
 
