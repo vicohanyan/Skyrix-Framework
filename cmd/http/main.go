@@ -7,10 +7,6 @@ import (
 	"syscall"
 )
 
-// @title Skyrix Delivery API
-// @version 1.0
-// @description HTTP API for the Skyrix Delivery service.
-// @BasePath /
 func main() {
 	// 1. Create a context that is canceled on SIGINT/SIGTERM
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

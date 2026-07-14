@@ -1,4 +1,4 @@
-# Skyrix Delivery
+# Skyrix Framework
 
 Delivery service for the Skyrix platform. The service exposes customer, store,
 delivery-admin, and super-admin HTTP APIs, consumes delivery events from NATS
