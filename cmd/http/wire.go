@@ -27,7 +27,7 @@ func buildHTTPApp() (*kernel.HTTPApp, func(), error) {
 		// 4. Platform policies
 		providers.PlatformProviderSet,
 
-		// 5. Business domains
+		// 5. Example domain
 		providers.DomainProviderSet,
 
 		// 6. App layer

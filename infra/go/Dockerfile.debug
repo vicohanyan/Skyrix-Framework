@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1.7
+
+ARG GO_VERSION=1.26.3
+
+########################
+# builder debug
+########################
+FROM golang:${GO_VERSION}-bookworm AS builder
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    libaom-dev git build-essential pkg-config \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY go.mod go.sum ./
+
+RUN --mount=type=secret,id=netrc,target=/root/.netrc,required=false \
+    go mod download
+
+COPY . .
+
+# Debug build for HTTP service.
+# В debug лучше НЕ использовать -trimpath, чтобы IDE проще мапила исходники.
+RUN go build -gcflags="all=-N -l" -o /app/delivery ./cmd/http
+
+# Optional console binary
+RUN go build -gcflags="all=-N -l" -o /app/cobra ./cmd/console
+
+
+########################
+# runtime debug
+########################
+FROM golang:${GO_VERSION}-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    libaom-dev \
+    openssl \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
+COPY --from=builder /app/delivery /app/delivery
+COPY --from=builder /app/cobra /app/cobra
+
+COPY --from=builder /app/config /app/config
+
+RUN mkdir -p /app/logs /app/entrypoints /app/secret
+
+EXPOSE 7540 2345
+
+ENTRYPOINT ["/app/entrypoints/app-entrypoint.sh"]
+CMD ["/app/delivery"]

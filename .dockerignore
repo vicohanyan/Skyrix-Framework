@@ -1,0 +1,9 @@
+.git
+.idea
+logs
+secret
+tmp
+*.log
+.env
+
+docker-compose.override.yml

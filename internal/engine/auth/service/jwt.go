@@ -39,6 +39,9 @@ func NewJWTService(logger logger.Interface, cfg *config.JWT, store contracts.Sto
 
 // GenerateToken creates a signed JWT using configured RSA algorithm and custom claims.
 func (j *JWTService) GenerateToken(claims security.CustomClaims) (string, error) {
+	if j.PrivateKey == nil {
+		return "", errors.New("jwt private key is not configured")
+	}
 	method, err := j.getSigningMethod()
 	if err != nil {
 		return "", err
@@ -47,26 +50,11 @@ func (j *JWTService) GenerateToken(claims security.CustomClaims) (string, error)
 	return tok.SignedString(j.PrivateKey)
 }
 
-// ParseToken validates the signature and decodes CustomClaims from the token string.
-func (j *JWTService) ParseToken(tokenString string) (*security.CustomClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &security.CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
-			return nil, errors.New("unexpected signing method")
-		}
-		return j.PublicKey, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	claims, ok := token.Claims.(*security.CustomClaims)
-	if !ok || !token.Valid {
-		return nil, errors.New("invalid token")
-	}
-	return claims, nil
-}
-
 // ValidateToken checks blacklist status, verifies signature, and confirms session existence.
 func (j *JWTService) ValidateToken(ctx context.Context, tokenString string) (*security.CustomClaims, error) {
+	if j.Store == nil {
+		return j.ParseToken(tokenString)
+	}
 	if black, err := j.Store.IsTokenBlacklisted(ctx, tokenString); err != nil || black {
 		return nil, errors.New("invalid or expired token")
 	}
@@ -112,14 +100,18 @@ func loadKeys(privateKeyPath, publicKeyPath string) (*rsa.PrivateKey, *rsa.Publi
 	}
 
 	// Load public key
-	publicKeyData, err := os.ReadFile(publicKeyPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	publicKey, err := jwt.ParseRSAPublicKeyFromPEM(publicKeyData)
+	publicKey, err := loadPublicKey(publicKeyPath)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	return privateKey, publicKey, nil
+}
+
+func loadPublicKey(publicKeyPath string) (*rsa.PublicKey, error) {
+	publicKeyData, err := os.ReadFile(publicKeyPath)
+	if err != nil {
+		return nil, err
+	}
+	return jwt.ParseRSAPublicKeyFromPEM(publicKeyData)
 }

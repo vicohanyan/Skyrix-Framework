@@ -19,6 +19,7 @@ var ProviderSet = wire.NewSet(
 	ProvideDatabaseConfig,
 	ProvideRedisConfig,
 	ProvideHttpServerConfig,
+	ProvideJWTConfig,
 
 	ProvideLogger,
 	ProvidePostgres,
@@ -43,14 +44,18 @@ func ProvideHttpServerConfig(cfg *config.Config) *config.HttpServer {
 	return &cfg.HttpServer
 }
 
+func ProvideJWTConfig(cfg *config.Config) *config.JWT {
+	return &cfg.JWT
+}
+
 // ---- Leaf providers ----
 
 func ProvideConfig() (*config.Config, error) {
 	return config.LoadConfig()
 }
 
-func ProvideLogger(cfg *config.Logger) logger.Interface {
-	return logger.NewLogger(cfg.LogLevel, cfg.LogType, cfg.LogFile)
+func ProvideLogger(cfg *config.Config) logger.Interface {
+	return logger.NewLogger(cfg.Logger)
 }
 
 func ProvidePostgres(cfg *config.Database, log logger.Interface) (*gorm.DB, func(), error) {

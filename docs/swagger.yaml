@@ -1,0 +1,186 @@
+basePath: /
+definitions:
+  internal_handlers.ErrorBody:
+    properties:
+      code:
+        type: string
+      details:
+        items:
+          $ref: '#/definitions/internal_handlers.FieldError'
+        type: array
+      message:
+        type: string
+      request_id:
+        type: string
+    type: object
+  internal_handlers.ErrorPayload:
+    properties:
+      error:
+        $ref: '#/definitions/internal_handlers.ErrorBody'
+    type: object
+  internal_handlers.FieldError:
+    properties:
+      field:
+        type: string
+      message:
+        type: string
+    type: object
+  skyrix_internal_domain_example_dto.CreateTaskInput:
+    properties:
+      description:
+        maxLength: 4000
+        type: string
+      title:
+        maxLength: 160
+        type: string
+    required:
+    - title
+    type: object
+  skyrix_internal_domain_example_dto.TaskResult:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      public_id:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: HTTP API for the Skyrix Delivery service.
+  title: Skyrix Delivery API
+  version: "1.0"
+paths:
+  /api/v1/examples/tasks/:
+    get:
+      description: Returns example tasks in descending creation order.
+      parameters:
+      - default: 20
+        description: Maximum number of tasks
+        in: query
+        maximum: 100
+        minimum: 1
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/skyrix_internal_domain_example_dto.TaskResult'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorPayload'
+      summary: List example tasks
+      tags:
+      - example tasks
+    post:
+      consumes:
+      - application/json
+      description: Creates a task with PENDING status.
+      parameters:
+      - description: Task payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/skyrix_internal_domain_example_dto.CreateTaskInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/skyrix_internal_domain_example_dto.TaskResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorPayload'
+      summary: Create an example task
+      tags:
+      - example tasks
+  /api/v1/examples/tasks/{task_id}:
+    get:
+      description: Returns an example task by its numeric identifier.
+      parameters:
+      - description: Task ID
+        in: path
+        minimum: 1
+        name: task_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/skyrix_internal_domain_example_dto.TaskResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorPayload'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorPayload'
+      summary: Get an example task
+      tags:
+      - example tasks
+  /api/v1/examples/tasks/{task_id}/complete:
+    patch:
+      description: Changes an example task status from PENDING to COMPLETED.
+      parameters:
+      - description: Task ID
+        in: path
+        minimum: 1
+        name: task_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/skyrix_internal_domain_example_dto.TaskResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorPayload'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorPayload'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorPayload'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handlers.ErrorPayload'
+      summary: Complete an example task
+      tags:
+      - example tasks
+swagger: "2.0"

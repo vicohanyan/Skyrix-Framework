@@ -1,13 +1,13 @@
 package handlers
 
-func (b *BaseHandler) MapValidationErrors(dto any) []FieldError {
-	m := b.Validator.ValidateStruct(dto)
-	if len(m) == 0 {
+func (b *BaseHandler) MapValidationErrors(input any) []FieldError {
+	validationErrors := b.Validator.ValidateStruct(input)
+	if len(validationErrors) == 0 {
 		return nil
 	}
-	out := make([]FieldError, 0, len(m))
-	for field, msg := range m {
-		out = append(out, FieldError{Field: field, Message: msg})
+	result := make([]FieldError, 0, len(validationErrors))
+	for field, message := range validationErrors {
+		result = append(result, FieldError{Field: field, Message: message})
 	}
-	return out
+	return result
 }

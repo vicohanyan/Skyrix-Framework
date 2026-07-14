@@ -1,19 +1,16 @@
 package providers
 
 import (
-	"skyrix/internal/handlers"
-
 	"github.com/google/wire"
+
+	"skyrix/internal/handlers"
 )
 
 type Handlers struct {
-	Subscriber *handlers.SubscriberHandler
-	// Order *handlers.OrderHandler
+	ExampleTask *handlers.ExampleTaskHandler
 }
 
 var HandlerProviderSet = wire.NewSet(
-	handlers.NewSubscriberHandler,
-	// handlers.NewOrderHandler,
-
+	handlers.NewExampleTaskHandler,
 	wire.Struct(new(Handlers), "*"),
 )

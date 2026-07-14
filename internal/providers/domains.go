@@ -1,13 +1,15 @@
 package providers
 
 import (
-	"skyrix/internal/domain/order"
-	"skyrix/internal/domain/subscriber"
+	"skyrix/internal/domain/example"
 
 	"github.com/google/wire"
 )
 
 var DomainProviderSet = wire.NewSet(
-	order.ProviderSet,
-	subscriber.ProviderSet,
+	example.ProviderSet,
+)
+
+var ConsoleDomainProviderSet = wire.NewSet(
+	example.ProviderSet,
 )

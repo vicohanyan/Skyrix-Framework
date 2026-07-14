@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Helper providers to extract specific config structs from the main Config.
+// ProvideLoggerConfig Helper providers to extract specific config structs from the main Config.
 func ProvideLoggerConfig(cfg *config.Config) *config.Logger {
 	return &cfg.Logger
 }
@@ -38,8 +38,8 @@ func ProvideConfig() (*config.Config, error) {
 	return config.LoadConfig()
 }
 
-func ProvideLogger(cfg *config.Logger) logger.Interface {
-	return logger.NewLogger(cfg.LogLevel, cfg.LogType, cfg.LogFile)
+func ProvideLogger(cfg *config.Config) logger.Interface {
+	return logger.NewLogger(cfg.Logger)
 }
 
 func ProvidePostgres(cfg *config.Database, log logger.Interface) (*gorm.DB, func(), error) {

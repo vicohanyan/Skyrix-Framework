@@ -3,12 +3,25 @@ package engine
 import (
 	"context"
 	"errors"
-	"skyrix/internal/logger"
 	"strings"
 	"time"
 
+	"skyrix/internal/logger"
+
 	"github.com/redis/go-redis/v9"
 )
+
+var deleteIfValueMatches = redis.NewScript(`
+	local value = redis.call("GET", KEYS[1])
+	if not value then
+		return 0
+	end
+	if value ~= ARGV[1] then
+		return -1
+	end
+	redis.call("DEL", KEYS[1])
+	return 1
+`)
 
 // Redis is a generic Redis wrapper for cache/KV operations.
 type Redis struct {
@@ -73,6 +86,24 @@ func (r *Redis) Set(ctx context.Context, key string, data []byte, ttl time.Durat
 // Del removes a key from Redis.
 func (r *Redis) Del(ctx context.Context, key string) error {
 	return r.client.Del(ctx, key).Err()
+}
+
+// DeleteIfValue removes a key only when its current value matches expected.
+func (r *Redis) DeleteIfValue(
+	ctx context.Context,
+	key string,
+	expected []byte,
+) (bool, error) {
+	result, err := deleteIfValueMatches.Run(
+		ctx,
+		r.client,
+		[]string{key},
+		expected,
+	).Int64()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
 }
 
 // Exists checks if a key exists in Redis.

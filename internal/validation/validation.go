@@ -17,8 +17,7 @@ func NewValidator() *Validator {
 
 func (vv *Validator) ValidateStruct(s any) map[string]string {
 	if err := vv.v.Struct(s); err != nil {
-		var vErrors validator.ValidationErrors
-		if errors.As(err, &vErrors) {
+		if vErrors, ok := errors.AsType[validator.ValidationErrors](err); ok {
 			out := make(map[string]string, len(vErrors))
 			for _, fe := range vErrors {
 				out[fe.Field()] = fmt.Sprintf("%s", fe.Tag())

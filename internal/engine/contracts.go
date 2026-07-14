@@ -14,6 +14,9 @@ type Cache interface {
 	Set(ctx context.Context, key string, val []byte, ttl time.Duration) error
 	// Del removes a cache entry.
 	Del(ctx context.Context, key string) error
+	// DeleteIfValue removes a cache entry only when its current value equals expected.
+	// It must be implemented atomically by the cache adapter.
+	DeleteIfValue(ctx context.Context, key string, expected []byte) (bool, error)
 	// Exists reports whether a key is present.
 	Exists(ctx context.Context, key string) (bool, error)
 }
@@ -24,9 +27,4 @@ type DB interface {
 	WithContext(ctx context.Context) *gorm.DB
 	// Main returns the name of the primary schema/database.
 	Main() string
-}
-
-type TransactionManager interface {
-	// Execute runs fn inside a transaction, committing on success and rolling back on errors/panics.
-	Execute(ctx context.Context, fn func(tx *gorm.DB) error) error
 }

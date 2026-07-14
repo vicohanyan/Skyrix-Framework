@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 
+	scaffoldconsole "skyrix/internal/engine/scaffold/console"
 	"skyrix/internal/providers"
 
 	"github.com/spf13/cobra"
@@ -13,10 +14,10 @@ import (
 type ConsoleApp struct {
 	Kernel   *Kernel
 	Jobs     *providers.Jobs
-	Commands *providers.Commands
+	Commands *scaffoldconsole.Commands
 }
 
-func NewConsoleApp(kernel *Kernel, jobs *providers.Jobs, commands *providers.Commands) *ConsoleApp {
+func NewConsoleApp(kernel *Kernel, jobs *providers.Jobs, commands *scaffoldconsole.Commands) *ConsoleApp {
 	return &ConsoleApp{
 		Kernel:   kernel,
 		Jobs:     jobs,

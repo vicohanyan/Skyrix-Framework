@@ -12,11 +12,11 @@ type Jobs struct {
 	SystemPingJob *jobs.SystemPingJob
 }
 
-// ProvideJobsInit registers all known jobs into the registry.
-// It returns a cleanup func to satisfy Wire and to avoid double-providing *Registry.
-func ProvideJobsInit(reg *kernelJobs.Registry, all *Jobs) func() {
+// ProvideRegisteredJobsRegistry registers all known jobs and returns the registry
+// through the interface used by the kernel, console command, and admin handlers.
+func ProvideRegisteredJobsRegistry(reg *kernelJobs.Registry, all *Jobs) engineJobs.Registry {
 	reg.Register(all.SystemPingJob)
-	return func() {}
+	return reg
 }
 
 // JobDomainDepsSet contains ONLY dependencies required by jobs (domain services, publishers, etc).
@@ -43,9 +43,13 @@ var JobProviderSet = wire.NewSet(
 	// bundle
 	wire.Struct(new(Jobs), "*"),
 
-	// init hook (doesn't provide *Registry)
-	ProvideJobsInit,
+	// registered registry
+	ProvideRegisteredJobsRegistry,
+)
 
-	// interface binding
-	wire.Bind(new(engineJobs.Registry), new(*kernelJobs.Registry)),
+var ConsoleJobProviderSet = wire.NewSet(
+	kernelJobs.NewRegistry,
+	jobs.NewSystemPingJob,
+	wire.Struct(new(Jobs), "*"),
+	ProvideRegisteredJobsRegistry,
 )

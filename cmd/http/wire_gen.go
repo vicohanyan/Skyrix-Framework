@@ -7,16 +7,19 @@
 package main
 
 import (
-	"skyrix/internal/domain/subscriber/repository"
-	"skyrix/internal/domain/subscriber/services"
+	"gitlab.com/skyrix-lib/eventbus"
+	"skyrix/internal/domain/example/repository"
+	"skyrix/internal/domain/example/services"
+	"skyrix/internal/domain/example/unitOfWork"
 	"skyrix/internal/engine"
-	"skyrix/internal/engine/tenantPackage"
 	"skyrix/internal/handlers"
+	jobs2 "skyrix/internal/jobs"
 	"skyrix/internal/kernel"
 	"skyrix/internal/kernel/jobs"
 	"skyrix/internal/middleware"
 	"skyrix/internal/providers"
 	"skyrix/internal/router"
+	"skyrix/internal/transport/nats/v1"
 	"skyrix/internal/validation"
 )
 
@@ -29,29 +32,31 @@ func buildHTTPApp() (*kernel.HTTPApp, func(), error) {
 	}
 	httpServer := kernel.ProvideHttpServerConfig(config)
 	manyRequestsMiddleware := middleware.NewManyRequestsMiddleware()
-	logger := kernel.ProvideLoggerConfig(config)
-	loggerInterface := kernel.ProvideLogger(logger)
+	loggerInterface := kernel.ProvideLogger(config)
 	recoverMiddleware := middleware.NewRecoverMiddleware(loggerInterface)
 	gzipDecompressMiddleware := middleware.NewGzipDecompressMiddleware(loggerInterface)
+	jwt := kernel.ProvideJWTConfig(config)
+	authMiddleware := middleware.NewAuthMiddleware(loggerInterface, jwt)
 	globalMiddleware := &providers.GlobalMiddleware{
 		ManyRequests:   manyRequestsMiddleware,
 		Recover:        recoverMiddleware,
 		GzipDecompress: gzipDecompressMiddleware,
+		Auth:           authMiddleware,
 	}
 	noopTenantMiddleware := router.NewNoopTenantMiddleware()
+	validator := validation.NewValidator()
 	database := kernel.ProvideDatabaseConfig(config)
 	db, cleanup, err := kernel.ProvidePostgres(database, loggerInterface)
 	if err != nil {
 		return nil, nil, err
 	}
 	engineDatabase := engine.ProvideDatabaseService(db, config)
-	string2 := tenantPackage.ProvideTenantHeader(config)
-	subscriberRepository := repository.NewSubscriberRepository(engineDatabase, string2, loggerInterface)
-	subscriberService := services.NewSubscriberService(subscriberRepository, loggerInterface)
-	validator := validation.NewValidator()
-	subscriberHandler := handlers.NewSubscriberHandler(loggerInterface, subscriberService, validator)
+	taskRepository := repository.NewTaskRepository(engineDatabase)
+	createTaskUOW := unitofwork.NewCreateTaskUnitOfWork(engineDatabase, taskRepository)
+	taskService := services.NewTaskService(taskRepository, createTaskUOW)
+	exampleTaskHandler := handlers.NewExampleTaskHandler(loggerInterface, validator, taskService)
 	providersHandlers := &providers.Handlers{
-		Subscriber: subscriberHandler,
+		ExampleTask: exampleTaskHandler,
 	}
 	handler := router.ProvideRouter(httpServer, globalMiddleware, noopTenantMiddleware, providersHandlers)
 	server := kernel.ProvideHTTPServer(handler, httpServer)
@@ -63,14 +68,32 @@ func buildHTTPApp() (*kernel.HTTPApp, func(), error) {
 	}
 	engineRedis := engine.ProvideRedisService(client, loggerInterface, config)
 	registry := jobs.NewRegistry(loggerInterface)
-	kernelKernel := kernel.NewKernel(config, loggerInterface, engineDatabase, engineRedis, registry)
-	httpApp, err := kernel.NewHTTPApp(server, kernelKernel)
+	systemPingJob := jobs2.NewSystemPingJob(loggerInterface)
+	providersJobs := &providers.Jobs{
+		SystemPingJob: systemPingJob,
+	}
+	jobsRegistry := providers.ProvideRegisteredJobsRegistry(registry, providersJobs)
+	kernelKernel := kernel.NewKernel(config, loggerInterface, engineDatabase, engineRedis, jobsRegistry)
+	queue := providers.ProvideQueueConfig(config)
+	interfacesConfig := providers.ProvideEventBusConfig(queue)
+	logger := providers.ProvideEventBusLogger(loggerInterface)
+	bus, cleanup3, err := eventbus.ProvideBus(interfacesConfig, logger)
 	if err != nil {
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
+	subscriberGroup := v1.NewSubscriberGroup(bus)
+	runtime := providers.ProvidePlatformRuntime(subscriberGroup)
+	httpApp, err := kernel.NewHTTPApp(server, kernelKernel, runtime)
+	if err != nil {
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	return httpApp, func() {
+		cleanup3()
 		cleanup2()
 		cleanup()
 	}, nil

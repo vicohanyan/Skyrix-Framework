@@ -1,0 +1,100 @@
+name: skyrix-delivery
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: infra/go/Dockerfile
+    command: ["/app/delivery"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/config:ro
+      - ./secret/jwt_public.pem:/run/secrets/jwt/public.pem:ro
+      - ./entrypoints/app-entrypoint.sh:/app/entrypoints/app-entrypoint.sh:ro
+      - ./data:/app/data:ro
+    expose:
+      - "7540"
+    ports:
+      - "127.0.0.1:7540:7540"
+    environment:
+      - APP_ENV=local
+      - DB_HOST=delivery-postgres
+      - DB_PORT=5432
+      - REDIS_HOST=delivery-redis
+      - REDIS_PORT=6379
+      - QUEUE_HOST=nats
+      - QUEUE_PORT=4222
+      - QUEUE_NAME=skyrix-queue
+      - QUEUE_USER=skyrix
+      - QUEUE_PASS=skyrix-local-dev-queue-2026
+      - JWT_ALGORITHM=RS256
+      - JWT_PUBLIC_KEY_PATH=/run/secrets/jwt/public.pem
+      - JWT_ISSUER=skyrix-auth
+    networks:
+      skyrix-network:
+        aliases:
+          - delivery-api
+          - skyrix-delivery-api
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:7540/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: always
+
+  postgres:
+    build:
+      context: .
+      dockerfile: infra/postgres/Dockerfile
+    image: skyrix-delivery-postgres:18-postgis-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: skyrix
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: skyrix_delivery
+    volumes:
+      - skyrix_delivery_pgdata:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skyrix -d skyrix_delivery -h localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      skyrix-network:
+        aliases:
+          - delivery-postgres
+          - skyrix-delivery-postgres
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - skyrix_delivery_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      skyrix-network:
+        aliases:
+          - delivery-redis
+          - skyrix-delivery-redis
+
+volumes:
+  skyrix_delivery_pgdata:
+  skyrix_delivery_redisdata:
+
+networks:
+  skyrix-network:
+    external: true
+    name: skyrix-network

@@ -43,15 +43,6 @@ type BaseHandler struct {
 	Validator   *validation.Validator
 }
 
-// ToDo make interface for handlers
-//type CRUDHandler interface {
-//	List(w http.ResponseWriter, r *http.Request)   // GET /items
-//	Get(w http.ResponseWriter, r *http.Request)    // GET /items/{id}
-//	Create(w http.ResponseWriter, r *http.Request) // POST /items
-//	Update(w http.ResponseWriter, r *http.Request) // PUT/PATCH /items/{id}
-//	Delete(w http.ResponseWriter, r *http.Request) // DELETE /items/{id}
-//}
-
 // WithAutoName sets HandlerName from the concrete handler type.
 func (b *BaseHandler) WithAutoName(h any) *BaseHandler {
 	b.HandlerName = typeName(h)

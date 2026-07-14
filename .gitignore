@@ -1,10 +1,8 @@
-# IDE
-.idea/
+/secret/
+/.idea/
+/.junie/
+/.claude/
 
-# Logs
 logs/*.log
-
-# Secrets / sensitive
-secrets/
-*.env
-.env
+.tmp/
+secret/delivery-e2e.env

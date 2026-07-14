@@ -8,7 +8,13 @@ package main
 
 import (
 	"skyrix/internal/commands"
+	"skyrix/internal/database"
 	"skyrix/internal/engine"
+	"skyrix/internal/engine/scaffold/console"
+	"skyrix/internal/engine/scaffold/db"
+	"skyrix/internal/engine/scaffold/eventbus"
+	"skyrix/internal/engine/scaffold/job"
+	make2 "skyrix/internal/engine/scaffold/make"
 	jobs2 "skyrix/internal/jobs"
 	"skyrix/internal/kernel"
 	"skyrix/internal/kernel/jobs"
@@ -22,14 +28,13 @@ func buildConsoleApp() (*kernel.ConsoleApp, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	logger := kernel.ProvideLoggerConfig(config)
-	loggerInterface := kernel.ProvideLogger(logger)
-	database := kernel.ProvideDatabaseConfig(config)
-	db, cleanup, err := kernel.ProvidePostgres(database, loggerInterface)
+	loggerInterface := kernel.ProvideLogger(config)
+	configDatabase := kernel.ProvideDatabaseConfig(config)
+	gormDB, cleanup, err := kernel.ProvidePostgres(configDatabase, loggerInterface)
 	if err != nil {
 		return nil, nil, err
 	}
-	engineDatabase := engine.ProvideDatabaseService(db, config)
+	engineDatabase := engine.ProvideDatabaseService(gormDB, config)
 	redis := kernel.ProvideRedisConfig(config)
 	client, cleanup2, err := kernel.ProvideRedis(redis, loggerInterface)
 	if err != nil {
@@ -38,14 +43,23 @@ func buildConsoleApp() (*kernel.ConsoleApp, func(), error) {
 	}
 	engineRedis := engine.ProvideRedisService(client, loggerInterface, config)
 	registry := jobs.NewRegistry(loggerInterface)
-	kernelKernel := kernel.NewKernel(config, loggerInterface, engineDatabase, engineRedis, registry)
 	systemPingJob := jobs2.NewSystemPingJob(loggerInterface)
 	providersJobs := &providers.Jobs{
 		SystemPingJob: systemPingJob,
 	}
+	jobsRegistry := providers.ProvideRegisteredJobsRegistry(registry, providersJobs)
+	kernelKernel := kernel.NewKernel(config, loggerInterface, engineDatabase, engineRedis, jobsRegistry)
 	helloCommand := commands.NewHelloCommand()
-	providersCommands := providers.ProvideCommands(helloCommand)
-	consoleApp := kernel.NewConsoleApp(kernelKernel, providersJobs, providersCommands)
+	dbSeeder := database.NewDBSeeder(engineDatabase, loggerInterface)
+	dbMigrator := database.NewDBMigrator(engineDatabase, loggerInterface, dbSeeder)
+	dbAutoMigrateCommand := db.NewDBAutoMigrateCommand(dbMigrator)
+	dbSeedCommand := db.NewDBSeedCommand(dbSeeder)
+	dbCommand := db.NewDBCommand(dbAutoMigrateCommand, dbSeedCommand)
+	jobsRunCommand := job.NewJobsRunCommand(jobsRegistry)
+	eventBusCommand := eventbus.NewEventBusCommand()
+	makeCommand := make2.NewMakeCommand()
+	consoleCommands := console.NewCommands(helloCommand, dbCommand, jobsRunCommand, eventBusCommand, makeCommand)
+	consoleApp := kernel.NewConsoleApp(kernelKernel, providersJobs, consoleCommands)
 	return consoleApp, func() {
 		cleanup2()
 		cleanup()

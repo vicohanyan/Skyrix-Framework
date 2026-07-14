@@ -1,0 +1,29 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: infra/go/Dockerfile.debug
+
+    command:
+      - "dlv"
+      - "exec"
+      - "/app/delivery"
+      - "--headless"
+      - "--listen=:2345"
+      - "--api-version=2"
+      - "--accept-multiclient"
+      - "--continue"
+      - "--log"
+
+    ports:
+      - "127.0.0.1:2345:2345"
+    environment:
+      - APP_ENV=local
+
+    cap_add:
+      - SYS_PTRACE
+
+    security_opt:
+      - apparmor=unconfined
+
+    restart: "no"

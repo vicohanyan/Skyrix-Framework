@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -9,6 +10,8 @@ import (
 
 type Config struct {
 	Env         string `yaml:"APP_ENV" env:"APP_ENV"`
+	ServiceName string `yaml:"SERVICE_NAME" env:"SERVICE_NAME"`
+
 	Logger      `yaml:"LOGGER" env:"LOGGER"`
 	HttpServer  `yaml:"HTTP_SERVER" env:"HTTP_SERVER"`
 	Database    `yaml:"DATABASE" env:"DATABASE"`
@@ -17,13 +20,15 @@ type Config struct {
 	Queue       `yaml:"QUEUE" env:"QUEUE"`
 	OAuth       `yaml:"OAUTH" env:"OAUTH"`
 	TenantCache `yaml:"TENANT_CACHE" env:"TENANT_CACHE"`
+	Maps        `yaml:"MAPS" env:"MAPS"`
 }
 
 type Logger struct {
-	LogType  string `yaml:"LOG_TYPE" env:"LOG_TYPE" env-default:"text"`         // text, json
-	LogLevel string `yaml:"LOG_LEVEL" env:"LOG_LEVEL" env-default:"info"`       // Log level (debug, info, warn, error)
-	LogDir   string `yaml:"LOG_DIR" env:"LOG_DIR" env-default:"./logs/"`        // Log directory
-	LogFile  string `yaml:"LOG_FILE" env:"LOG_FILE" env-default:"delivery.log"` // Log file name
+	LogOutput string `yaml:"LOG_OUTPUT" env:"LOG_OUTPUT" env-default:"stdout"` // stdout, stderr, file
+	LogType   string `yaml:"LOG_TYPE" env:"LOG_TYPE" env-default:"json"`       // text, json
+	LogLevel  string `yaml:"LOG_LEVEL" env:"LOG_LEVEL" env-default:"info"`     // debug, info, warn, error
+	LogDir    string `yaml:"LOG_DIR" env:"LOG_DIR" env-default:""`             // used only for file output
+	LogFile   string `yaml:"LOG_FILE" env:"LOG_FILE" env-default:""`           // used only for file output
 }
 
 type HttpServer struct {
@@ -52,15 +57,31 @@ type JWT struct {
 	PrivateKeyPath string `yaml:"JWT_PRIVATE_KEY_PATH" env:"JWT_PRIVATE_KEY_PATH"`
 	Expiration     int    `yaml:"JWT_EXPIRE" env:"JWT_EXPIRE" env-default:"24"` // Token expiration time in hours
 	Algorithm      string `yaml:"JWT_ALGORITHM" env:"JWT_ALGORITHM"`
+	Issuer         string `yaml:"JWT_ISSUER" env:"JWT_ISSUER"`
+	Audience       string `yaml:"JWT_AUDIENCE" env:"JWT_AUDIENCE"`
 }
 
 type Queue struct {
-	Host             string        `yaml:"queue_host" env:"QUEUE_HOST" env-default:"nats"`
-	Port             int           `yaml:"queue_port" env:"QUEUE_PORT" env-default:"4222"`
-	ServiceName      string        `yaml:"queue_service_name" env:"QUEUE_SERVICE_NAME" env-default:"delivery-service"`
-	RetryTimeout     time.Duration `yaml:"queue_retry_timeout" env:"QUEUE_RETRY_TIMEOUT" env-default:"5s"`
-	ReconnectTimeout time.Duration `yaml:"queue_reconnect_timeout" env:"QUEUE_RECONNECT_TIMEOUT" env-default:"2s"`
+	Enabled          bool          `yaml:"QUEUE_ENABLED"           env:"QUEUE_ENABLED"           env-default:"false"`
+	Host             string        `yaml:"QUEUE_HOST"              env:"QUEUE_HOST"              env-default:"nats"`
+	Port             int           `yaml:"QUEUE_PORT"              env:"QUEUE_PORT"              env-default:"4222"`
+	ServiceName      string        `yaml:"QUEUE_NAME"              env:"QUEUE_NAME"              env-default:"skyrix-framework"`
+	User             string        `yaml:"QUEUE_USER"              env:"QUEUE_USER"`
+	Pass             string        `yaml:"QUEUE_PASS"              env:"QUEUE_PASS"`
+	RetryTimeout     time.Duration `yaml:"QUEUE_RETRY_TIMEOUT"     env:"QUEUE_RETRY_TIMEOUT"     env-default:"5s"`
+	ReconnectTimeout time.Duration `yaml:"QUEUE_RECONNECT_TIMEOUT" env:"QUEUE_RECONNECT_TIMEOUT" env-default:"2s"`
+	DLQPrefix        string        `yaml:"DLQ_PREFIX"              env:"DLQ_PREFIX"              env-default:"dlq."`
 }
+
+func (q *Queue) EventBusEnabled() bool             { return q != nil && q.Enabled }
+func (q *Queue) NATSHost() string                  { return q.Host }
+func (q *Queue) NATSPort() int                     { return q.Port }
+func (q *Queue) NATSUser() string                  { return q.User }
+func (q *Queue) NATSPassword() string              { return q.Pass }
+func (q *Queue) NATSConnectionName() string        { return q.ServiceName }
+func (q *Queue) NATSConnectTimeout() time.Duration { return q.RetryTimeout }
+func (q *Queue) NATSReconnectWait() time.Duration  { return q.ReconnectTimeout }
+func (q *Queue) NATSDefaultDLQPrefix() string      { return q.DLQPrefix }
 
 type OAuth struct {
 	GoogleClientID    string `yaml:"GOOGLE_CLIENT_ID" env:"OAUTH_GOOGLE_CLIENT_ID"`
@@ -71,17 +92,64 @@ type OAuth struct {
 
 type TenantCache struct {
 	TTL       time.Duration `yaml:"TENANT_CACHE_TTL" env:"TENANT_CACHE_TTL" env-default:"3m"`
-	KeyPrefix string        `yaml:"TENANT_CACHE_KEY_PREFIX" env:"TENANT_CACHE_KEY_PREFIX" env-default:"skyrix-delivery"`
+	KeyPrefix string        `yaml:"TENANT_CACHE_KEY_PREFIX" env:"TENANT_CACHE_KEY_PREFIX" env-default:"skyrix-framework"`
+}
+
+type Maps struct {
+	GeocodeProvider          string        `yaml:"MAPS_GEOCODE_PROVIDER" env:"MAPS_GEOCODE_PROVIDER" env-default:"YANDEX"`
+	RoutingProvider          string        `yaml:"MAPS_ROUTING_PROVIDER" env:"MAPS_ROUTING_PROVIDER" env-default:"INTERNAL"`
+	GeocodeCacheTTL          time.Duration `yaml:"MAPS_GEOCODE_CACHE_TTL" env:"MAPS_GEOCODE_CACHE_TTL" env-default:"720h"`
+	RouteCacheTTL            time.Duration `yaml:"MAPS_ROUTE_CACHE_TTL" env:"MAPS_ROUTE_CACHE_TTL" env-default:"720h"`
+	InternalRouteCoefficient float64       `yaml:"MAPS_INTERNAL_ROUTE_COEFFICIENT" env:"MAPS_INTERNAL_ROUTE_COEFFICIENT" env-default:"1.35"`
+	InternalAverageSpeedKMH  float64       `yaml:"MAPS_INTERNAL_AVERAGE_SPEED_KMH" env:"MAPS_INTERNAL_AVERAGE_SPEED_KMH" env-default:"20"`
+	ExternalRequestTimeout   time.Duration `yaml:"MAPS_EXTERNAL_REQUEST_TIMEOUT" env:"MAPS_EXTERNAL_REQUEST_TIMEOUT" env-default:"3s"`
+
+	GoogleAPIKey           string `yaml:"MAPS_GOOGLE_API_KEY" env:"MAPS_GOOGLE_API_KEY"`
+	GoogleGeocodingBaseURL string `yaml:"MAPS_GOOGLE_GEOCODING_BASE_URL" env:"MAPS_GOOGLE_GEOCODING_BASE_URL" env-default:"https://maps.googleapis.com/maps/api/geocode/json"`
+
+	YandexAPIKey         string `yaml:"MAPS_YANDEX_API_KEY" env:"MAPS_YANDEX_API_KEY"`
+	YandexGeocodeBaseURL string `yaml:"MAPS_YANDEX_GEOCODE_BASE_URL" env:"MAPS_YANDEX_GEOCODE_BASE_URL" env-default:"https://geocode-maps.yandex.ru/1.x/"`
+
+	OSMNominatimBaseURL string `yaml:"MAPS_OSM_NOMINATIM_BASE_URL" env:"MAPS_OSM_NOMINATIM_BASE_URL" env-default:"https://nominatim.openstreetmap.org/search"`
+	OSMUserAgent        string `yaml:"MAPS_OSM_USER_AGENT" env:"MAPS_OSM_USER_AGENT"`
+
+	OSRMBaseURL string `yaml:"MAPS_OSRM_BASE_URL" env:"MAPS_OSRM_BASE_URL" env-default:"https://router.project-osrm.org"`
 }
 
 func LoadConfig() (*Config, error) {
 	cfg := &Config{}
 
-	if err := cleanenv.ReadConfig("/config/local.yaml", cfg); err != nil {
-		fmt.Printf("Warning: failed to read config file, falling back to environment variables: %v\n", err)
+	appEnv := os.Getenv("APP_ENV")
+	if appEnv == "" {
+		appEnv = "local"
 	}
+
+	configPaths := []string{
+		fmt.Sprintf("/config/%s.yaml", appEnv),
+		fmt.Sprintf("config/%s.yaml", appEnv),
+	}
+
+	var loaded bool
+	for _, path := range configPaths {
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+
+		if err := cleanenv.ReadConfig(path, cfg); err != nil {
+			return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
+		}
+
+		loaded = true
+		break
+	}
+
+	if !loaded {
+		fmt.Printf("Warning: config file for APP_ENV=%s not found, falling back to environment variables\n", appEnv)
+	}
+
 	if err := cleanenv.ReadEnv(cfg); err != nil {
 		return nil, fmt.Errorf("failed to read environment variables: %w", err)
 	}
+
 	return cfg, nil
 }

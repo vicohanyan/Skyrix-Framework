@@ -5,6 +5,7 @@ package main
 
 import (
 	"skyrix/internal/engine"
+	scaffoldconsole "skyrix/internal/engine/scaffold/console"
 	"skyrix/internal/kernel"
 	"skyrix/internal/providers"
 
@@ -23,8 +24,8 @@ func buildConsoleApp() (*kernel.ConsoleApp, func(), error) {
 		kernel.NewKernel,
 
 		// 4) Console layer
-		providers.JobProviderSet,
-		providers.CommandProviderSet,
+		providers.ConsoleJobProviderSet,
+		scaffoldconsole.ProviderSet,
 
 		// 5) Final console app
 		kernel.NewConsoleApp,
