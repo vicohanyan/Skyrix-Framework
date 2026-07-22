@@ -38,12 +38,12 @@ type RedisOpts struct {
 }
 
 // NewRedisService creates a new Redis service instance.
-// Key prefix is normalized (trailing colons removed) and defaults to "skyrix-delivery" if empty.
+// Key prefix is normalized (trailing colons removed) and defaults to "skyrix-payment" if empty.
 // StatusTTL defaults to 10 minutes if not specified or zero.
 func NewRedisService(client *redis.Client, lg logger.Interface, redisOpts RedisOpts) *Redis {
 	prefix := strings.TrimSuffix(strings.TrimSpace(redisOpts.KeyPrefix), ":")
 	if prefix == "" {
-		prefix = "skyrix-delivery"
+		prefix = "skyrix-payment"
 	}
 	ttl := redisOpts.StatusTTL
 	if ttl <= 0 {

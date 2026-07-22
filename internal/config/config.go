@@ -20,7 +20,6 @@ type Config struct {
 	Queue       `yaml:"QUEUE" env:"QUEUE"`
 	OAuth       `yaml:"OAUTH" env:"OAUTH"`
 	TenantCache `yaml:"TENANT_CACHE" env:"TENANT_CACHE"`
-	Maps        `yaml:"MAPS" env:"MAPS"`
 }
 
 type Logger struct {
@@ -93,27 +92,6 @@ type OAuth struct {
 type TenantCache struct {
 	TTL       time.Duration `yaml:"TENANT_CACHE_TTL" env:"TENANT_CACHE_TTL" env-default:"3m"`
 	KeyPrefix string        `yaml:"TENANT_CACHE_KEY_PREFIX" env:"TENANT_CACHE_KEY_PREFIX" env-default:"skyrix-framework"`
-}
-
-type Maps struct {
-	GeocodeProvider          string        `yaml:"MAPS_GEOCODE_PROVIDER" env:"MAPS_GEOCODE_PROVIDER" env-default:"YANDEX"`
-	RoutingProvider          string        `yaml:"MAPS_ROUTING_PROVIDER" env:"MAPS_ROUTING_PROVIDER" env-default:"INTERNAL"`
-	GeocodeCacheTTL          time.Duration `yaml:"MAPS_GEOCODE_CACHE_TTL" env:"MAPS_GEOCODE_CACHE_TTL" env-default:"720h"`
-	RouteCacheTTL            time.Duration `yaml:"MAPS_ROUTE_CACHE_TTL" env:"MAPS_ROUTE_CACHE_TTL" env-default:"720h"`
-	InternalRouteCoefficient float64       `yaml:"MAPS_INTERNAL_ROUTE_COEFFICIENT" env:"MAPS_INTERNAL_ROUTE_COEFFICIENT" env-default:"1.35"`
-	InternalAverageSpeedKMH  float64       `yaml:"MAPS_INTERNAL_AVERAGE_SPEED_KMH" env:"MAPS_INTERNAL_AVERAGE_SPEED_KMH" env-default:"20"`
-	ExternalRequestTimeout   time.Duration `yaml:"MAPS_EXTERNAL_REQUEST_TIMEOUT" env:"MAPS_EXTERNAL_REQUEST_TIMEOUT" env-default:"3s"`
-
-	GoogleAPIKey           string `yaml:"MAPS_GOOGLE_API_KEY" env:"MAPS_GOOGLE_API_KEY"`
-	GoogleGeocodingBaseURL string `yaml:"MAPS_GOOGLE_GEOCODING_BASE_URL" env:"MAPS_GOOGLE_GEOCODING_BASE_URL" env-default:"https://maps.googleapis.com/maps/api/geocode/json"`
-
-	YandexAPIKey         string `yaml:"MAPS_YANDEX_API_KEY" env:"MAPS_YANDEX_API_KEY"`
-	YandexGeocodeBaseURL string `yaml:"MAPS_YANDEX_GEOCODE_BASE_URL" env:"MAPS_YANDEX_GEOCODE_BASE_URL" env-default:"https://geocode-maps.yandex.ru/1.x/"`
-
-	OSMNominatimBaseURL string `yaml:"MAPS_OSM_NOMINATIM_BASE_URL" env:"MAPS_OSM_NOMINATIM_BASE_URL" env-default:"https://nominatim.openstreetmap.org/search"`
-	OSMUserAgent        string `yaml:"MAPS_OSM_USER_AGENT" env:"MAPS_OSM_USER_AGENT"`
-
-	OSRMBaseURL string `yaml:"MAPS_OSRM_BASE_URL" env:"MAPS_OSRM_BASE_URL" env-default:"https://router.project-osrm.org"`
 }
 
 func LoadConfig() (*Config, error) {

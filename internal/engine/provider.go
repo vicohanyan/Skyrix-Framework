@@ -2,6 +2,7 @@ package engine
 
 import (
 	"skyrix/internal/config"
+	"skyrix/internal/kernel/db/scope"
 	"skyrix/internal/logger"
 	"time"
 
@@ -20,8 +21,11 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(Cache), new(*Redis)),
 )
 
-func ProvideDatabaseService(db *gorm.DB, cfg *config.Config) *Database {
-	return NewDatabaseService(db, cfg.Database.MainSchema)
+func ProvideDatabaseService(db *gorm.DB, cfg *config.Config) (*Database, error) {
+	if err := db.Use(&scope.Plugin{}); err != nil {
+		return nil, err
+	}
+	return NewDatabaseService(db, cfg.Database.MainSchema), nil
 }
 
 func ProvideRedisService(redisClient *redis.Client, log logger.Interface, cfg *config.Config) *Redis {

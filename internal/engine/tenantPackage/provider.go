@@ -2,6 +2,7 @@ package tenantPackage
 
 import (
 	"skyrix/internal/config"
+	"skyrix/internal/engine/tenantPackage/middleware"
 	"skyrix/internal/engine/tenantPackage/repository"
 	"skyrix/internal/engine/tenantPackage/schemaResolver"
 	"skyrix/internal/engine/tenantPackage/service"
@@ -28,9 +29,8 @@ var CoreSet = wire.NewSet(
 
 // MiddlewareSet only HTTP middleware components.
 var MiddlewareSet = wire.NewSet(
-	// these constructors depend on resolver/service from CoreSet
-	// so keep them separated but provided by ProviderSet
-	// (we will import middleware package here)
+	middleware.NewTenantMiddleware,
+	middleware.NewCorsMiddleware,
 	NewMiddlewareBundle,
 )
 

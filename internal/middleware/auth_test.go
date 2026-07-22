@@ -85,6 +85,23 @@ func TestAuthMiddlewareValidTokenAddsIdentity(t *testing.T) {
 	}
 }
 
+func TestStoreIDFromIdentityRejectsMissingStoreSubject(t *testing.T) {
+	_, err := StoreIDFromIdentity(AuthIdentity{UserID: 42, Subject: "user:42", Role: security.RoleStoreOperator})
+	if err == nil {
+		t.Fatal("StoreIDFromIdentity() error = nil, want missing store identity error")
+	}
+}
+
+func TestStoreIDFromIdentityUsesCatalogStoreSubject(t *testing.T) {
+	storeID, err := StoreIDFromIdentity(AuthIdentity{UserID: 42, Subject: "store:store-one", Role: security.RoleStoreManager})
+	if err != nil {
+		t.Fatalf("StoreIDFromIdentity() error = %v", err)
+	}
+	if storeID != "store-one" {
+		t.Fatalf("StoreIDFromIdentity() = %q, want store-one", storeID)
+	}
+}
+
 func newTestAuthMiddleware(t *testing.T) (*AuthMiddleware, *rsa.PrivateKey) {
 	t.Helper()
 

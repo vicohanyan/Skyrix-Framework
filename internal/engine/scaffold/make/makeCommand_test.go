@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"skyrix/internal/engine/scaffold/internal/support"
+	"skyrix/internal/engine/scaffold/support"
 
 	"github.com/spf13/cobra"
 )
@@ -77,7 +77,7 @@ func TestNormalizeScaffoldName(t *testing.T) {
 		{"Payment", "payment", "Payment"},
 		{"PAYMENT", "payment", "Payment"},
 		{"payment_gateway", "paymentgateway", "PaymentGateway"},
-		{"Delivery2", "delivery2", "Delivery2"},
+		{"Invoice2", "invoice2", "Invoice2"},
 	}
 	for _, test := range tests {
 		name, err := support.NormalizeName(test.raw)

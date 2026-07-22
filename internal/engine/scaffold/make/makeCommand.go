@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"skyrix/internal/engine/scaffold/internal/support"
+	"skyrix/internal/engine/scaffold/support"
 
 	"github.com/spf13/cobra"
 )

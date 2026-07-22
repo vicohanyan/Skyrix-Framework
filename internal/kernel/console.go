@@ -5,7 +5,6 @@ import (
 
 	"skyrix/internal/commands"
 	"skyrix/internal/engine/scaffold"
-	"skyrix/internal/providers"
 
 	"github.com/spf13/cobra"
 )
@@ -14,20 +13,17 @@ import (
 // It wires the Kernel plus the Commands bundle and exposes a single Execute entrypoint.
 type ConsoleApp struct {
 	Kernel   *Kernel
-	Jobs     *providers.Jobs
 	Commands *commands.Commands
 	Scaffold *scaffold.Commands
 }
 
 func NewConsoleApp(
 	kernel *Kernel,
-	jobs *providers.Jobs,
 	applicationCommands *commands.Commands,
 	scaffoldCommands *scaffold.Commands,
 ) *ConsoleApp {
 	return &ConsoleApp{
 		Kernel:   kernel,
-		Jobs:     jobs,
 		Commands: applicationCommands,
 		Scaffold: scaffoldCommands,
 	}

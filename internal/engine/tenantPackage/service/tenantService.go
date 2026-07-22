@@ -43,7 +43,7 @@ func NewTenantService(
 
 	prefix := strings.TrimSuffix(strings.TrimSpace(opts.KeyPrefix), ":")
 	if prefix == "" {
-		prefix = "skyrix-delivery"
+		prefix = "skyrix-payment"
 	}
 
 	return &TenantService{

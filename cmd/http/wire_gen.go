@@ -50,7 +50,11 @@ func buildHTTPApp() (*kernel.HTTPApp, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	engineDatabase := engine.ProvideDatabaseService(db, config)
+	engineDatabase, err := engine.ProvideDatabaseService(db, config)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
 	taskRepository := repository.NewTaskRepository(engineDatabase)
 	createTaskUOW := unitofwork.NewCreateTaskUnitOfWork(engineDatabase, taskRepository)
 	taskService := services.NewTaskService(taskRepository, createTaskUOW)
@@ -75,15 +79,15 @@ func buildHTTPApp() (*kernel.HTTPApp, func(), error) {
 	jobsRegistry := providers.ProvideRegisteredJobsRegistry(registry, providersJobs)
 	kernelKernel := kernel.NewKernel(config, loggerInterface, engineDatabase, engineRedis, jobsRegistry)
 	queue := providers.ProvideQueueConfig(config)
-	interfacesConfig := providers.ProvideEventBusConfig(queue)
-	logger := providers.ProvideEventBusLogger(loggerInterface)
-	bus, cleanup3, err := eventbus.ProvideBus(interfacesConfig, logger)
+	v := providers.ProvideEventBusConfig(queue)
+	v2 := providers.ProvideEventBusLogger(loggerInterface)
+	v3, cleanup3, err := eventbus.ProvideBus(v, v2)
 	if err != nil {
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
-	subscriberGroup := v1.NewSubscriberGroup(bus)
+	subscriberGroup := v1.NewSubscriberGroup(v3)
 	runtime := providers.ProvidePlatformRuntime(subscriberGroup)
 	httpApp, err := kernel.NewHTTPApp(server, kernelKernel, runtime)
 	if err != nil {

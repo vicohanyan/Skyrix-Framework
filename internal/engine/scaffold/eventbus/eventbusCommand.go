@@ -33,39 +33,81 @@ func (c *EventBusCommand) ToCobraCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:     "eventbus",
 		Aliases: []string{"bus"},
-		Short:   "Manage EventBus transport scaffolding",
+		Short:   "Create and manage EventBus transport packages",
+		Long: `Create and manage application EventBus transport modules.
+
+The Go library must be installed separately with:
+  go get gitlab.com/skyrix-lib/eventbus@v1.0.0
+
+"eventbus module create" creates only an empty transport module and its Wire
+provider. Add EventBus components explicitly with the event, consumer,
+subscriber, and publisher commands. No Saga or application-layer code is
+generated.`,
+		Example: strings.Join([]string{
+			"  go run ./cmd/console eventbus module create Payment",
+			"  go run ./cmd/console eventbus event create Payment PaymentRequested --subject payment.requested.v1",
+			"  go run ./cmd/console eventbus consumer create Payment PaymentRequested",
+			"  go run ./cmd/console eventbus subscriber create Payment PaymentRequested",
+			"  go run ./cmd/console eventbus publisher create Payment PaymentRequested",
+		}, "\n"),
 	}
-	command.AddCommand(
-		&cobra.Command{
-			Use:   "init",
-			Short: "Initialize EventBus transport scaffolding",
-			Args:  cobra.NoArgs,
-			RunE: func(cmd *cobra.Command, _ []string) error {
-				root, err := support.ProjectRoot(c.ProjectRoot)
-				if err != nil {
-					return err
-				}
-				transportRoot := eventBusTransportRoot(root)
-				if _, err := os.Stat(transportRoot); err == nil {
-					return fmt.Errorf("eventbus transport is already initialized: %s", transportRoot)
-				} else if !os.IsNotExist(err) {
-					return fmt.Errorf("inspect eventbus transport: %w", err)
-				}
-				if err := os.MkdirAll(transportRoot, 0o755); err != nil {
-					return fmt.Errorf("create eventbus transport directory: %w", err)
-				}
-				if err := c.writeEventBusRegistration(root); err != nil {
-					_ = os.RemoveAll(transportRoot)
-					return err
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "eventbus initialized: %s\n", transportRoot)
-				return nil
-			},
+	initCommand := &cobra.Command{
+		Use:   "init",
+		Short: "Initialize EventBus transport scaffolding",
+		Long: `Initialize an empty EventBus transport structure.
+
+You normally do not need this command because "eventbus module create" initializes
+the structure automatically.`,
+		Example: `  go run ./cmd/console eventbus init`,
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			root, err := support.ProjectRoot(c.ProjectRoot)
+			if err != nil {
+				return err
+			}
+			initialized, err := c.ensureInitialized(root)
+			if err != nil {
+				return err
+			}
+			if !initialized {
+				return fmt.Errorf("eventbus transport is already initialized: %s", eventBusTransportRoot(root))
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "eventbus initialized: %s\n", eventBusTransportRoot(root))
+			return nil
 		},
+	}
+	moduleCommand := &cobra.Command{
+		Use:     "module",
+		Aliases: []string{"modules", "package", "packages"},
+		Short:   "Manage EventBus transport modules",
+		Long: `Manage application EventBus transport modules.
+
+A module is a Go package under internal/transport/eventbus/v1. Module commands
+do not create consumers, subscribers, publishers, or event definitions.`,
+		Example: strings.Join([]string{
+			"  go run ./cmd/console eventbus module create Payment",
+			"  go run ./cmd/console eventbus module list",
+		}, "\n"),
+	}
+	moduleCommand.AddCommand(
 		&cobra.Command{
-			Use:   "create <Name>",
-			Short: "Create an EventBus transport module",
-			Args:  cobra.ExactArgs(1),
+			Use:     "create <Name>",
+			Aliases: []string{"add", "new"},
+			Short:   "Create an EventBus transport package",
+			Long: `Create a named EventBus transport package.
+
+For example, "Payment" creates:
+  internal/transport/eventbus/v1/payment/provider.go
+
+If EventBus transport scaffolding does not exist yet, it is initialized
+automatically. The generated root provider is updated with the new package.
+
+This command does not create consumers, subscribers, publishers, or events.`,
+			Example: strings.Join([]string{
+				"  go run ./cmd/console eventbus module create Payment",
+				"  go run ./cmd/console bus module add Refund",
+			}, "\n"),
+			Args: cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				name, err := support.NormalizeName(args[0])
 				if err != nil {
@@ -75,13 +117,14 @@ func (c *EventBusCommand) ToCobraCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				moduleDir := filepath.Join(eventBusTransportRoot(root), name.Package)
-				if _, err := os.Stat(filepath.Dir(moduleDir)); err != nil {
-					if os.IsNotExist(err) {
-						return fmt.Errorf("eventbus is not initialized; run eventbus init first")
-					}
-					return fmt.Errorf("inspect eventbus transport: %w", err)
+				initialized, err := c.ensureInitialized(root)
+				if err != nil {
+					return err
 				}
+				if initialized {
+					fmt.Fprintf(cmd.OutOrStdout(), "eventbus initialized: %s\n", eventBusTransportRoot(root))
+				}
+				moduleDir := filepath.Join(eventBusTransportRoot(root), name.Package)
 				if _, err := os.Stat(moduleDir); err == nil {
 					return fmt.Errorf("eventbus module already exists: %s", name.Package)
 				} else if !os.IsNotExist(err) {
@@ -114,13 +157,16 @@ func (c *EventBusCommand) ToCobraCommand() *cobra.Command {
 					return err
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "eventbus module created: %s\n", name.Package)
+				fmt.Fprintf(cmd.OutOrStdout(), "next: eventbus event create %s <Event> --subject <versioned.subject>\n", name.Type)
 				return nil
 			},
 		},
 		&cobra.Command{
-			Use:   "list",
-			Short: "List generated EventBus transport modules",
-			Args:  cobra.NoArgs,
+			Use:     "list",
+			Short:   "List generated EventBus transport packages",
+			Long:    "List all EventBus transport packages managed by the scaffold command.",
+			Example: `  go run ./cmd/console eventbus module list`,
+			Args:    cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, _ []string) error {
 				root, err := support.ProjectRoot(c.ProjectRoot)
 				if err != nil {
@@ -142,8 +188,11 @@ func (c *EventBusCommand) ToCobraCommand() *cobra.Command {
 		},
 		&cobra.Command{
 			Use:   "remove <Name>",
-			Short: "Remove a generated EventBus transport module",
-			Args:  cobra.ExactArgs(1),
+			Short: "Remove a generated EventBus transport package",
+			Long: `Remove a scaffold-managed EventBus transport package and update the
+generated root Wire provider. Manually created packages are never removed.`,
+			Example: `  go run ./cmd/console eventbus module remove Payment`,
+			Args:    cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				name, err := support.NormalizeName(args[0])
 				if err != nil {
@@ -181,7 +230,37 @@ func (c *EventBusCommand) ToCobraCommand() *cobra.Command {
 			},
 		},
 	)
+	command.AddCommand(
+		initCommand,
+		moduleCommand,
+		c.newEventCommand(),
+		c.newConsumerCommand(),
+		c.newPublisherCommand(),
+		c.newSubscriberCommand(),
+	)
 	return command
+}
+
+func (c *EventBusCommand) ensureInitialized(root string) (bool, error) {
+	transportRoot := eventBusTransportRoot(root)
+	info, err := os.Stat(transportRoot)
+	if err == nil {
+		if !info.IsDir() {
+			return false, fmt.Errorf("eventbus transport path is not a directory: %s", transportRoot)
+		}
+		return false, nil
+	}
+	if !os.IsNotExist(err) {
+		return false, fmt.Errorf("inspect eventbus transport: %w", err)
+	}
+	if err := os.MkdirAll(transportRoot, 0o755); err != nil {
+		return false, fmt.Errorf("create eventbus transport directory: %w", err)
+	}
+	if err := c.writeEventBusRegistration(root); err != nil {
+		_ = os.RemoveAll(transportRoot)
+		return false, err
+	}
+	return true, nil
 }
 
 func eventBusTransportRoot(root string) string {

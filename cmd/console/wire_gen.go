@@ -34,7 +34,11 @@ func buildConsoleApp() (*kernel.ConsoleApp, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	engineDatabase := engine.ProvideDatabaseService(gormDB, config)
+	engineDatabase, err := engine.ProvideDatabaseService(gormDB, config)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
 	redis := kernel.ProvideRedisConfig(config)
 	client, cleanup2, err := kernel.ProvideRedis(redis, loggerInterface)
 	if err != nil {
@@ -60,7 +64,7 @@ func buildConsoleApp() (*kernel.ConsoleApp, func(), error) {
 	eventBusCommand := eventbus.NewEventBusCommand()
 	makeCommand := make2.NewMakeCommand()
 	scaffoldCommands := scaffold.NewCommands(dbCommand, jobsRunCommand, eventBusCommand, makeCommand)
-	consoleApp := kernel.NewConsoleApp(kernelKernel, providersJobs, commandsCommands, scaffoldCommands)
+	consoleApp := kernel.NewConsoleApp(kernelKernel, commandsCommands, scaffoldCommands)
 	return consoleApp, func() {
 		cleanup2()
 		cleanup()

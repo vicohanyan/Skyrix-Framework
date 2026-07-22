@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	tenantContext "skyrix/internal/engine/tenantPackage/context"
+	"skyrix/internal/kernel/db/scope"
 	"strings"
 
 	"gorm.io/gorm"
@@ -59,13 +60,11 @@ func (d *Database) Close() error {
 // automatically sets PostgreSQL search_path based on the tenant in context.
 // - If tenant is present in ctx: search_path = tenant, main, public
 // - If tenant is absent:         search_path = main, public
-// WithContext returns a GORM session bound to the given context AND
-// automatically sets PostgreSQL search_path based on the tenant in context.
-// - If tenant is present in ctx: search_path = tenant, main, public
-// - If tenant is absent:         search_path = main, public
 func (d *Database) WithContext(ctx context.Context) *gorm.DB {
-	db := d.DB.WithContext(ctx)
 	schema := tenantContext.SchemaFrom(ctx)
+	ctx = scope.WithEngine(ctx, d)
+	ctx = scope.WithTenant(ctx, schema)
+	db := d.DB.WithContext(ctx)
 	_ = d.SetSchema(db, schema)
 	return db
 }

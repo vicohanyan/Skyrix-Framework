@@ -2,7 +2,6 @@ package scope
 
 import (
 	"fmt"
-	"skyrix/internal/engine"
 	"strings"
 
 	"gorm.io/gorm"
@@ -40,7 +39,7 @@ func (p *Plugin) before(db *gorm.DB) {
 	}
 
 	ctx := db.Statement.Context
-	e := engine.EngineFrom(ctx)
+	e := engineFrom(ctx)
 	if e == nil {
 		return
 	}

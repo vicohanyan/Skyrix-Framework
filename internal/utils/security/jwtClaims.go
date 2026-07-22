@@ -10,9 +10,11 @@ import (
 type Role string
 
 const (
-	RoleSuperAdmin Role = "super_admin"
-	RoleStaff      Role = "staff"
-	RoleCustomer   Role = "customer"
+	RoleSuperAdmin    Role = "super_admin"
+	RoleStaff         Role = "staff"
+	RoleCustomer      Role = "customer"
+	RoleStoreManager  Role = "store_manager"
+	RoleStoreOperator Role = "store_operator"
 )
 
 type CustomClaims struct {

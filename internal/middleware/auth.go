@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"skyrix/internal/config"
@@ -40,8 +39,7 @@ func StoreIDFromIdentity(identity AuthIdentity) (string, error) {
 		return strings.TrimSpace(storeID), nil
 	}
 
-	// TODO: replace this fallback after JWT store identity schema is finalized.
-	return strconv.FormatUint(identity.UserID, 10), nil
+	return "", errors.New("store identity is required")
 }
 
 type AuthMiddleware struct {

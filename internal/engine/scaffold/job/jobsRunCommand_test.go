@@ -36,7 +36,7 @@ func TestJobsRunCommandPassesArgsToRegistry(t *testing.T) {
 	reg := &fakeJobsRegistry{}
 	cmd := NewJobsRunCommand(reg).ToCobraCommand()
 	cmd.SetArgs([]string{
-		"--name=delivery.dispatch.expired_offers",
+		"--name=payment.reconcile",
 		`--args-json={"limit":100,"max_attempts":2,"source":"test"}`,
 		"--limit=50",
 		"--max-attempts=3",
@@ -47,7 +47,7 @@ func TestJobsRunCommandPassesArgsToRegistry(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if reg.name != "delivery.dispatch.expired_offers" {
+	if reg.name != "payment.reconcile" {
 		t.Fatalf("registry name = %q", reg.name)
 	}
 	if reg.args["limit"] != 50 {
