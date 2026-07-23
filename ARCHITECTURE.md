@@ -47,16 +47,16 @@ Entry points contain no business logic; assembly is explicit; domains stay isola
 
 Skyrix Framework distinguishes **two categories of packages**:
 
-1. **Internal packages (framework / engine / kernel)**
-2. **Domain packages (business logic)**
+1. **Framework packages (engine / kernel / Cobra infrastructure)**
+2. **Template domain packages (business logic)**
 
 This separation is a foundation of the Balance Pattern.
 
 ---
 
-## 1) Internal Packages (Framework / Engine)
+## 1) Framework Packages
 
-**Location:** `internal/kernel`, `internal/engine`, `internal/router`, `internal/providers`, etc.
+**Location:** `engine`, `kernel`, `cobra`, `logging`, `extensions`, and framework `internal` adapters.
 
 Internal packages represent the **platform layer**:
 - domain-agnostic infrastructure
@@ -67,14 +67,14 @@ Internal packages represent the **platform layer**:
 
 - Technical responsibilities (db, redis, transactions, http wiring, middleware)
 - Domain-agnostic by design
-- Hidden behind `internal/` to prevent accidental reuse
-- Candidates for future extraction into libraries after validation
+- Public mechanisms are imported by the template
+- Redis and PostgreSQL client construction remain hidden behind framework `internal/`
 
 ---
 
 ## 2) Domain Packages (Business)
 
-**Location:** `internal/domain/*`
+**Location:** `template/internal/domain/*`
 
 Domain packages contain business logic and domain behavior.
 Each domain is self-contained and owns its internal structure.
@@ -92,7 +92,7 @@ Domains are free to evolve quickly without forcing framework-level API changes.
 
 ## Application Assembly & Providers
 
-**Location:** `internal/providers`, plus assembly wiring in `cmd/*/wire.go`
+**Location:** `template/providers`, plus assembly wiring in `template/cmd/*/wire.go`
 
 Assembly is responsible for:
 - composition of domains and internal components,
@@ -100,7 +100,7 @@ Assembly is responsible for:
 - dependency injection wiring (Wire-based),
 - HTTP routes/handlers registration.
 
-`internal/providers` is reserved for application runtime composition and
+`template/providers` is reserved for application runtime composition and
 configuration: domains, handlers, jobs, middleware, infrastructure, and
 platform components. Console commands are composed separately and are not
 registered in this package.
@@ -111,11 +111,11 @@ The console application combines two independent Wire graphs:
 
 - `internal/commands.ProviderSet` — application-specific commands maintained by
   the service;
-- `internal/engine/scaffold.ProviderSet` — framework-internal maintenance and
+- `internal/scaffold.ProviderSet` — framework-internal maintenance and
   scaffolding commands.
 
-Both graphs are included by `cmd/console/wire.go` and are passed separately to
-`kernel.ConsoleApp`, which mounts both command lists on the Cobra root. This
+Both graphs are included by `template/cmd/cobra/wire.go` and are passed to
+`cobra.ConsoleApp`, which mounts both command lists on the Cobra root. This
 keeps user commands independent from framework tooling while preserving
 explicit compile-time dependency injection.
 
@@ -123,7 +123,7 @@ explicit compile-time dependency injection.
 
 ## Entry Points
 
-**Location:** `cmd/http`, `cmd/console`
+**Location:** `template/cmd/http`, `template/cmd/cobra`
 
 Entry points define:
 - how the application starts,
