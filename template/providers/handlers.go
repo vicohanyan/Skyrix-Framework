@@ -1,7 +1,7 @@
 package providers
 
 import (
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 
 	"gitlab.com/skyrix-lib/template/internal/handlers"
 )

@@ -9,7 +9,7 @@ import (
 	"gitlab.com/skyrix-lib/template/internal/scaffold"
 	"gitlab.com/skyrix-lib/template/providers"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 func buildConsoleApp() (*frameworkcobra.ConsoleApp, func(), error) {

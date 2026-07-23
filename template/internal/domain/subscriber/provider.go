@@ -4,7 +4,7 @@ import (
 	"gitlab.com/skyrix-lib/template/internal/domain/subscriber/repository"
 	"gitlab.com/skyrix-lib/template/internal/domain/subscriber/services"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 // ProviderSet exposes the public components of the subscriber domain (the service)

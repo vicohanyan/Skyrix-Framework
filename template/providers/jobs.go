@@ -5,7 +5,7 @@ import (
 	kernelJobs "gitlab.com/skyrix-lib/framework/kernel/jobs"
 	"gitlab.com/skyrix-lib/template/internal/jobs"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 type Jobs struct {

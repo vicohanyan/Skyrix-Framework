@@ -5,7 +5,7 @@ import (
 	"gitlab.com/skyrix-lib/template/internal/commands"
 	"gitlab.com/skyrix-lib/template/internal/scaffold"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 func ProvideCobraCommandGroups(

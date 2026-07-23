@@ -6,7 +6,7 @@ import (
 	"gitlab.com/skyrix-lib/template/internal/config"
 	natsv1 "gitlab.com/skyrix-lib/template/internal/transport/nats/v1"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 	"gitlab.com/skyrix-lib/eventbus"
 )
 

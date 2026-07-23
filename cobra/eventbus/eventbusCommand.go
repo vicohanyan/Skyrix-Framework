@@ -169,7 +169,7 @@ type Envelope[T any] struct {
 
 package %s
 
-import "github.com/google/wire"
+import "github.com/goforj/wire"
 
 // ProviderSet contains generated %s providers.
 var ProviderSet = wire.NewSet()
@@ -187,7 +187,7 @@ func (c *EventBusCommand) writeRootProvider(root string) error {
 package eventbus
 
 import (
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 
 	"%s/internal/transport/eventbus/consumers"
 	"%s/internal/transport/eventbus/publishers"

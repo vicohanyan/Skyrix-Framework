@@ -12,7 +12,7 @@ delivery jobs.
 - PostgreSQL 18 with PostGIS and GORM
 - Redis
 - NATS JetStream
-- Google Wire for compile-time dependency injection
+- goforj/wire for compile-time dependency injection
 - Cobra CLI
 - Prometheus metrics
 - Swagger/OpenAPI
@@ -201,9 +201,7 @@ The application currently does not mount Swagger UI; use `docs/swagger.yaml` or
 Regenerate Wire injectors after changing providers:
 
 ```bash
-go install github.com/google/wire/cmd/wire@latest
-wire ./cmd/http
-wire ./cmd/cobra
+go tool wire gen ./cmd/http ./cmd/cobra
 ```
 
 Run the test suite:
@@ -323,8 +321,7 @@ Add environment-specific files such as `config/prod.yaml` when production deploy
 Common rebuild/regeneration commands:
 
 ```bash
-wire ./cmd/http
-wire ./cmd/cobra
+go tool wire gen ./cmd/http ./cmd/cobra
 ```
 
 ```bash

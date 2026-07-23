@@ -8,7 +8,7 @@ import (
 	jobcmd "gitlab.com/skyrix-lib/template/internal/scaffold/job"
 	makecmd "gitlab.com/skyrix-lib/template/internal/scaffold/make"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 	"github.com/spf13/cobra"
 )
 

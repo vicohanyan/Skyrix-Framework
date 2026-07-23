@@ -1,7 +1,7 @@
 package order
 
 import (
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 // ProviderSet exposes the public components of the order domain (the service)

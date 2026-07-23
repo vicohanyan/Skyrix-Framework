@@ -7,7 +7,7 @@ import (
 	"gitlab.com/skyrix-lib/template/internal/config"
 	"time"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )

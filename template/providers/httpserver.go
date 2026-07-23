@@ -4,7 +4,7 @@ import (
 	"gitlab.com/skyrix-lib/framework/httpserver"
 	"gitlab.com/skyrix-lib/template/internal/config"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 func ProvideHTTPServerOptions(cfg *config.HttpServer) httpserver.Options {

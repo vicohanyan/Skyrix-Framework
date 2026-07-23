@@ -7,7 +7,7 @@ import (
 	logging "gitlab.com/skyrix-lib/framework/logging"
 	"gitlab.com/skyrix-lib/template/internal/config"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 func ProvideKernel(

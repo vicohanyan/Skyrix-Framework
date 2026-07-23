@@ -9,7 +9,7 @@ import (
 	"gitlab.com/skyrix-lib/template/internal/router"
 	"gitlab.com/skyrix-lib/template/providers"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 func buildHTTPApp() (*httpserver.HTTPApp, func(), error) {

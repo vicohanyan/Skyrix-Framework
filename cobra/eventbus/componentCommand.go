@@ -433,7 +433,7 @@ func writeRoleProvider(root, role string) error {
 
 package %s
 
-import "github.com/google/wire"
+import "github.com/goforj/wire"
 
 // ProviderSet contains generated %s providers.
 var ProviderSet = wire.NewSet(

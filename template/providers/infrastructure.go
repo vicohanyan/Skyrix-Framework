@@ -5,7 +5,7 @@ import (
 	"gitlab.com/skyrix-lib/framework/logging"
 	"gitlab.com/skyrix-lib/template/internal/config"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 // ProvideLoggerConfig Helper providers to extract specific config structs from the main Config.

@@ -8,7 +8,7 @@ import (
 	"gitlab.com/skyrix-lib/framework/extensions/tenant/service"
 	"gitlab.com/skyrix-lib/template/internal/config"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 var TenantProviderSet = wire.NewSet(

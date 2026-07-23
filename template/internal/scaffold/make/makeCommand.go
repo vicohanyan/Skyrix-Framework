@@ -60,7 +60,7 @@ func (c *MakeCommand) ToCobraCommand() *cobra.Command {
 				provider := fmt.Sprintf(`// Package %s contains the %s business domain.
 				package %s
 				
-				import "github.com/google/wire"
+				import "github.com/goforj/wire"
 				
 				// ProviderSet contains the domain providers.
 				var ProviderSet = wire.NewSet()

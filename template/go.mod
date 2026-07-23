@@ -4,8 +4,8 @@ go 1.26
 
 require (
 	github.com/go-chi/chi/v5 v5.3.1
+	github.com/goforj/wire v1.2.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/google/wire v0.7.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/redis/go-redis/v9 v9.21.0
@@ -37,9 +37,9 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.3 // indirect
-	github.com/goforj/wire v1.2.0 // indirect
 	github.com/google/subcommands v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/wire v0.7.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

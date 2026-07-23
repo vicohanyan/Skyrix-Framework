@@ -1,7 +1,7 @@
 package example
 
 import (
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 
 	"gitlab.com/skyrix-lib/template/internal/domain/example/interfaces"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/repository"

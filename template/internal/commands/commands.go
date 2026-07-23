@@ -2,7 +2,7 @@
 package commands
 
 import (
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 	"github.com/spf13/cobra"
 )
 

@@ -8,7 +8,7 @@ import (
 	"gitlab.com/skyrix-lib/template/internal/auth/storage"
 	"gitlab.com/skyrix-lib/template/internal/config"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 type Service struct {

@@ -5,7 +5,7 @@ import (
 	"gitlab.com/skyrix-lib/template/providers"
 	"net/http"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 func ProvideRouter(

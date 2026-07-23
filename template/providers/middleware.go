@@ -4,7 +4,7 @@ import (
 	frameworkmiddleware "gitlab.com/skyrix-lib/framework/httpserver/middleware"
 	appmiddleware "gitlab.com/skyrix-lib/template/internal/middleware"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 type GlobalMiddleware struct {

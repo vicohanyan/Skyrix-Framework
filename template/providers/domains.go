@@ -3,7 +3,7 @@ package providers
 import (
 	"gitlab.com/skyrix-lib/template/internal/domain/example"
 
-	"github.com/google/wire"
+	"github.com/goforj/wire"
 )
 
 var DomainProviderSet = wire.NewSet(
