@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"gitlab.com/skyrix-lib/framework/cobra/support"
+	support "gitlab.com/skyrix-lib/framework/scaffold"
 
 	"github.com/spf13/cobra"
 )

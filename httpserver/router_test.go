@@ -1,4 +1,4 @@
-package router
+package httpserver
 
 import (
 	"net/http"
@@ -11,7 +11,7 @@ import (
 
 func TestSystemMetricsRoute(t *testing.T) {
 	r := chi.NewRouter()
-	mountSystemRoutes(r)
+	RegisterSystemRoutes(r)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)

@@ -1,31 +1,19 @@
 package providers
 
 import (
-	"fmt"
+	"gitlab.com/skyrix-lib/framework/httpserver"
 	"gitlab.com/skyrix-lib/template/internal/config"
-	"net/http"
 
 	"github.com/google/wire"
 )
 
-// ProvideHTTPServer creates a new *http.Server.
-// It takes the router (as an http.Handler) and the server config.
-func ProvideHTTPServer(handler http.Handler, cfg *config.HttpServer) *http.Server {
-	// Construct the address string from host and port
-	addr := cfg.Address
-	if addr == "localhost" || addr == "" {
-		addr = "0.0.0.0" // Default to 0.0.0.0 for container compatibility
-	}
-	fullAddr := fmt.Sprintf("%s:%d", addr, cfg.Port)
-
-	return &http.Server{
-		Addr:    fullAddr,
-		Handler: handler,
-	}
+func ProvideHTTPServerOptions(cfg *config.HttpServer) httpserver.Options {
+	return httpserver.Options{Address: cfg.Address, Port: cfg.Port}
 }
 
 // HTTPProviderSet assembles all components specific to the HTTP server itself,
 // including the router and the final http.Server instance.
 var HTTPProviderSet = wire.NewSet(
-	ProvideHTTPServer, // Needs http.Handler (from RouterProviderSet) and *config.HttpServer
+	ProvideHTTPServerOptions,
+	httpserver.NewServer,
 )

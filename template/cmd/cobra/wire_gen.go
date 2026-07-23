@@ -9,7 +9,6 @@ package main
 import (
 	"gitlab.com/skyrix-lib/framework/cobra"
 	"gitlab.com/skyrix-lib/framework/cobra/eventbus"
-	make2 "gitlab.com/skyrix-lib/framework/cobra/make"
 	"gitlab.com/skyrix-lib/framework/kernel"
 	"gitlab.com/skyrix-lib/framework/kernel/jobs"
 	"gitlab.com/skyrix-lib/template/internal/commands"
@@ -18,6 +17,7 @@ import (
 	"gitlab.com/skyrix-lib/template/internal/scaffold"
 	"gitlab.com/skyrix-lib/template/internal/scaffold/db"
 	"gitlab.com/skyrix-lib/template/internal/scaffold/job"
+	make2 "gitlab.com/skyrix-lib/template/internal/scaffold/make"
 	"gitlab.com/skyrix-lib/template/providers"
 )
 

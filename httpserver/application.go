@@ -1,9 +1,10 @@
-package kernel
+package httpserver
 
 import (
 	"context"
 	"errors"
 	"gitlab.com/skyrix-lib/framework/engine"
+	frameworkkernel "gitlab.com/skyrix-lib/framework/kernel"
 	"gitlab.com/skyrix-lib/framework/logging"
 	"net/http"
 	"time"
@@ -12,7 +13,7 @@ import (
 // HTTPApp is the final runnable HTTP application.
 type HTTPApp struct {
 	Server   *http.Server
-	Kernel   *Kernel
+	Kernel   *frameworkkernel.Kernel
 	Platform engine.Platform
 }
 
@@ -20,7 +21,7 @@ type HTTPApp struct {
 // It takes the assembled Core and the fully configured http.Server.
 func NewHTTPApp(
 	server *http.Server,
-	kernel *Kernel,
+	kernel *frameworkkernel.Kernel,
 	platform engine.Platform,
 ) (*HTTPApp, error) {
 	return &HTTPApp{

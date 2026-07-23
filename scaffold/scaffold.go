@@ -1,5 +1,5 @@
-// Package support contains shared implementation helpers for scaffold commands.
-package support
+// Package scaffold contains shared implementation helpers for scaffold commands.
+package scaffold
 
 import (
 	"fmt"

@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	eventbuscmd "gitlab.com/skyrix-lib/framework/cobra/eventbus"
-	makecmd "gitlab.com/skyrix-lib/framework/cobra/make"
 	"gitlab.com/skyrix-lib/template/internal/scaffold/db"
 	jobcmd "gitlab.com/skyrix-lib/template/internal/scaffold/job"
+	makecmd "gitlab.com/skyrix-lib/template/internal/scaffold/make"
 )
 
 func TestNewCommandsRegistersFrameworkCommandGroups(t *testing.T) {

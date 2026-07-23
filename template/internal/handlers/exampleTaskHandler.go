@@ -8,9 +8,9 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"gitlab.com/skyrix-lib/framework/logging"
+	"gitlab.com/skyrix-lib/framework/validation"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/dto"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/interfaces"
-	"gitlab.com/skyrix-lib/template/internal/validation"
 )
 
 type ExampleTaskHandler struct {

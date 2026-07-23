@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"gitlab.com/skyrix-lib/framework/logging"
+	"gitlab.com/skyrix-lib/framework/validation" // Added import for validation
 	"gitlab.com/skyrix-lib/template/internal/domain/subscriber/services"
-	"gitlab.com/skyrix-lib/template/internal/validation" // Added import for validation
 )
 
 type SubscriberHandler struct {

@@ -4,15 +4,15 @@
 package main
 
 import (
-	"gitlab.com/skyrix-lib/framework/kernel"
+	"gitlab.com/skyrix-lib/framework/httpserver"
+	"gitlab.com/skyrix-lib/framework/validation"
 	"gitlab.com/skyrix-lib/template/internal/router"
-	"gitlab.com/skyrix-lib/template/internal/validation"
 	"gitlab.com/skyrix-lib/template/providers"
 
 	"github.com/google/wire"
 )
 
-func buildHTTPApp() (*kernel.HTTPApp, func(), error) {
+func buildHTTPApp() (*httpserver.HTTPApp, func(), error) {
 	wire.Build(
 		// 1. Microkernel bootstrap (config, logger, raw db/redis)
 		providers.InfrastructureSet,
@@ -40,7 +40,7 @@ func buildHTTPApp() (*kernel.HTTPApp, func(), error) {
 		providers.HTTPProviderSet,
 
 		// 8. Final app
-		kernel.NewHTTPApp,
+		httpserver.NewHTTPApp,
 	)
 	return nil, nil, nil
 }

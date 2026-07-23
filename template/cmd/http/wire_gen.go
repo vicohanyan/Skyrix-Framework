@@ -8,8 +8,11 @@ package main
 
 import (
 	"gitlab.com/skyrix-lib/eventbus"
+	"gitlab.com/skyrix-lib/framework/httpserver"
+	middleware2 "gitlab.com/skyrix-lib/framework/httpserver/middleware"
 	"gitlab.com/skyrix-lib/framework/kernel"
 	"gitlab.com/skyrix-lib/framework/kernel/jobs"
+	"gitlab.com/skyrix-lib/framework/validation"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/repository"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/services"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/unitOfWork"
@@ -18,13 +21,12 @@ import (
 	"gitlab.com/skyrix-lib/template/internal/middleware"
 	"gitlab.com/skyrix-lib/template/internal/router"
 	"gitlab.com/skyrix-lib/template/internal/transport/nats/v1"
-	"gitlab.com/skyrix-lib/template/internal/validation"
 	"gitlab.com/skyrix-lib/template/providers"
 )
 
 // Injectors from wire.go:
 
-func buildHTTPApp() (*kernel.HTTPApp, func(), error) {
+func buildHTTPApp() (*httpserver.HTTPApp, func(), error) {
 	config, err := providers.ProvideConfig()
 	if err != nil {
 		return nil, nil, err
@@ -32,8 +34,8 @@ func buildHTTPApp() (*kernel.HTTPApp, func(), error) {
 	httpServer := providers.ProvideHttpServerConfig(config)
 	manyRequestsMiddleware := middleware.NewManyRequestsMiddleware()
 	loggerInterface := providers.ProvideLogger(config)
-	recoverMiddleware := middleware.NewRecoverMiddleware(loggerInterface)
-	gzipDecompressMiddleware := middleware.NewGzipDecompressMiddleware(loggerInterface)
+	recoverMiddleware := middleware2.NewRecoverMiddleware(loggerInterface)
+	gzipDecompressMiddleware := middleware2.NewGzipDecompressMiddleware(loggerInterface)
 	jwt := providers.ProvideJWTConfig(config)
 	authMiddleware := middleware.NewAuthMiddleware(loggerInterface, jwt)
 	globalMiddleware := &providers.GlobalMiddleware{
@@ -63,7 +65,8 @@ func buildHTTPApp() (*kernel.HTTPApp, func(), error) {
 		ExampleTask: exampleTaskHandler,
 	}
 	handler := router.ProvideRouter(httpServer, globalMiddleware, noopTenantMiddleware, providersHandlers)
-	server := providers.ProvideHTTPServer(handler, httpServer)
+	options := providers.ProvideHTTPServerOptions(httpServer)
+	server := httpserver.NewServer(handler, options)
 	redis := providers.ProvideRedisConfig(config)
 	redisOptions := providers.ProvideRedisOptions(redis)
 	client, cleanup2, err := kernel.ProvideRedis(redisOptions, loggerInterface)
@@ -90,7 +93,7 @@ func buildHTTPApp() (*kernel.HTTPApp, func(), error) {
 	}
 	subscriberGroup := v1.NewSubscriberGroup(v3)
 	runtime := providers.ProvidePlatformRuntime(subscriberGroup)
-	httpApp, err := kernel.NewHTTPApp(server, kernelKernel, runtime)
+	httpApp, err := httpserver.NewHTTPApp(server, kernelKernel, runtime)
 	if err != nil {
 		cleanup3()
 		cleanup2()

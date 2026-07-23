@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 
+	"gitlab.com/skyrix-lib/framework/httpserver"
 	"gitlab.com/skyrix-lib/template/internal/config"
 	"gitlab.com/skyrix-lib/template/providers"
 
@@ -22,10 +23,13 @@ func InitRouter(
 	tenantMw TenantMiddleware,
 	handlers *providers.Handlers,
 ) http.Handler {
-	r := chi.NewRouter()
+	r := httpserver.NewRouter(httpserver.RouterOptions{
+		Timeout:    cfg.Timeout,
+		Recover:    globalMw.Recover.Handle,
+		Decompress: globalMw.GzipDecompress.Handle,
+	})
 
-	mountGlobalMiddlewares(r, cfg, globalMw)
-	mountSystemRoutes(r)
+	httpserver.RegisterSystemRoutes(r)
 	r.Route("/api/v1", func(r chi.Router) {
 		mountExampleRoutes(r, handlers)
 	})
