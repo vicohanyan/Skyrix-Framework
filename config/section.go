@@ -2,11 +2,13 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,12 +30,14 @@ type Section struct {
 
 type Validator interface{ Validate() error }
 
-// Field is value-free metadata shared by loading and diagnostic tools.
+// Field describes a field without exposing its current value.
+// Default is a formatted snapshot taken by New; secret defaults are redacted.
 type Field struct {
-	Path   string
-	Env    string
-	Type   string
-	Secret bool
+	Path    string
+	Env     string
+	Type    string
+	Secret  bool
+	Default string
 }
 
 // Metadata describes a selected section without exposing its working target.
@@ -103,7 +107,22 @@ func New(sections ...Section) (*Loader, error) {
 		if err := walk(v.Elem().Type(), nil, "", false, s, &e.fields); err != nil {
 			return nil, err
 		}
-		for _, f := range e.fields {
+		for i := range e.fields {
+			f := &e.fields[i]
+			if f.Secret {
+				f.Default = "[REDACTED]"
+			} else {
+				value := v.Elem().FieldByIndex(f.index)
+				if s.LegacyEnv {
+					if raw, ok := v.Elem().Type().FieldByIndex(f.index).Tag.Lookup("env-default"); ok {
+						value = reflect.New(value.Type()).Elem()
+						if err := decodeText(raw, value); err != nil {
+							return nil, fmt.Errorf("config %s: invalid default", f.Path)
+						}
+					}
+				}
+				f.Default = formatDefault(value)
+			}
 			if envs[f.Env] || paths[f.Path] {
 				return nil, fmt.Errorf("config %s: conflicting field or env name", f.Path)
 			}
@@ -112,6 +131,22 @@ func New(sections ...Section) (*Loader, error) {
 		l.entries = append(l.entries, e)
 	}
 	return l, nil
+}
+
+// formatDefault makes strings and lists unambiguous and keeps table rows on one line.
+func formatDefault(v reflect.Value) string {
+	if v.Type() == durationType {
+		return time.Duration(v.Int()).String()
+	}
+	if v.Kind() == reflect.String {
+		return strconv.Quote(v.String())
+	}
+	if v.Kind() == reflect.Slice {
+		if data, err := json.Marshal(v.Interface()); err == nil {
+			return string(data)
+		}
+	}
+	return fmt.Sprint(v.Interface())
 }
 
 func walk(t reflect.Type, index []int, prefix string, secret bool, s Section, fields *[]binding) error {

@@ -54,6 +54,7 @@ func TestCommandNeeds(t *testing.T) {
 		{"db migrate:baseline", console.NeedsNothing},
 		{"db migrate:diff", console.NeedsNothing},
 		{"make domain", console.NeedsNothing},
+		{"config:env", console.NeedsNothing},
 		{"make migration", console.NeedsNothing},
 		{"db automigrate", console.NeedsDatabase},
 		{"db seed", console.NeedsDatabase},

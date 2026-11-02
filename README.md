@@ -150,7 +150,7 @@ if err != nil { return err }
 if err := loader.Load(yamlReader, os.LookupEnv); err != nil { return err }
 // Use cfg in DI. Diagnostics must use loader.Safe(), never cfg or Section.Value.
 sections := loader.Sections() // keys, prefixes, YAML paths and fields
-fields := loader.Fields() // detached, value-free metadata: path, env, type, secret
+fields := loader.Fields() // detached metadata: path, env, type, secret, safe default
 safeValues := loader.Safe() // detached tree; working values remain unchanged
 ```
 
@@ -172,6 +172,17 @@ decoded nor validated; configuration loading opens no infrastructure connections
 A failed load can partially change targets: discard the targets on error. Create
 fresh consumer-owned targets for independent configurations; do not share mutable
 default slices between them. Loader and targets are not safe for concurrent mutation.
+
+`cobra/configcmd.Env(sections...)` describes the standalone `config:env` console
+command. Pass fresh section targets containing defaults only, explicitly from the
+application (or through `corecmd.Options.ConfigSections`); no global registry is
+used. The command lists section, env name, Go type and default, sorted by section
+key and env name. `--section <key>` selects an exact key; unknown keys are errors.
+Strings are quoted, durations use duration notation and secret defaults are always
+`[REDACTED]`, including fields inside secret structs. Metadata snapshots defaults
+at `config.New`, before any load; legacy `env-default` tags take precedence over
+struct defaults. It never prints values from YAML or the environment, calls
+`Load`/`Validate`, or builds a dependency graph.
 
 Naming rules are deliberately mechanical:
 

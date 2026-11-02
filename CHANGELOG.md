@@ -24,6 +24,11 @@ support v0.2.x.
 
 ### Added
 
+- Standalone `config:env` via `console.Command`: explicit application sections,
+  stable section/env ordering, exact `--section` filtering, types and safe default
+  snapshots. Secret defaults are masked; YAML/environment, validation and Wire
+  infrastructure graphs are never loaded. Template supplies its available sections.
+
 - Consumer-owned `config.Section` and instance-local `config.Loader`: explicit
   composition, defaults → YAML → env, validation, derived env metadata and
   secret-safe diagnostic trees. Conversion/validation errors suppress values.

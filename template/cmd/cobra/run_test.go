@@ -27,6 +27,9 @@ var helpAndStandaloneArgs = [][]string{
 	{"make", "--help"},
 	{"make", "domain", "--help"},
 	{"completion", "bash"},
+	{"config:env"},
+	{"config:env", "--section", "redis"},
+	{"config:env", "--help"},
 	{"make", "domain", "Payment"},
 }
 

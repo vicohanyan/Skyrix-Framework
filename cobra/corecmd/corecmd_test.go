@@ -16,7 +16,7 @@ func TestCommandsDescribeFrameworkCommandsAndTheirNeeds(t *testing.T) {
 		Database:   console.Value(console.NeedsDatabase, &dbcmd.Deps{}),
 		Jobs:       console.Value[engineJobs.Registry](console.NeedsApp, nil),
 	})
-	want := []string{"db", "jobs:run", "make"}
+	want := []string{"db", "jobs:run", "make", "config:env"}
 	if len(commands) != len(want) {
 		t.Fatalf("commands = %d, want %d", len(commands), len(want))
 	}
@@ -38,6 +38,7 @@ func TestCommandsDescribeFrameworkCommandsAndTheirNeeds(t *testing.T) {
 		{[]string{"db", "automigrate"}, console.NeedsDatabase},
 		{[]string{"db", "seed"}, console.NeedsDatabase},
 		{[]string{"jobs:run"}, console.NeedsApp},
+		{[]string{"config:env"}, console.NeedsNothing},
 		{[]string{"make", "domain"}, console.NeedsNothing},
 		{[]string{"make", "migration"}, console.NeedsNothing},
 	} {

@@ -6,6 +6,7 @@ import (
 	"gitlab.com/skyrix-lib/framework/database/dbcmd"
 	engineJobs "gitlab.com/skyrix-lib/framework/engine/jobs"
 	"gitlab.com/skyrix-lib/template/internal/commands"
+	"gitlab.com/skyrix-lib/template/internal/config"
 	"gitlab.com/skyrix-lib/template/providers"
 )
 
@@ -39,15 +40,16 @@ func (g graphs) Close() {
 // jobs:run, make), application commands (internal/commands) and platform
 // module commands. Describing them builds no graph and opens no connection;
 // a command's graph is built only when that command runs:
-//   - make, db migrate* and platform commands are standalone; db migrate*
+//   - config:env, make, db migrate* and platform commands are standalone; db migrate*
 //     connect only to PostgreSQL;
 //   - db automigrate and db seed build the database graph;
 //   - jobs:run and the application commands build the application graph.
 func newConsole(g graphs) *console.Console {
 	app := console.New(corecmd.Commands(corecmd.Options{
-		Migrations: providers.ProvideMigrationCommands(),
-		Database:   g.Database,
-		Jobs:       console.Derive(g.App, func(a *appGraph) engineJobs.Registry { return a.Jobs }),
+		Migrations:     providers.ProvideMigrationCommands(),
+		ConfigSections: config.Sections(),
+		Database:       g.Database,
+		Jobs:           console.Derive(g.App, func(a *appGraph) engineJobs.Registry { return a.Jobs }),
 	})...)
 	app.Add(commands.All(console.Derive(g.App, func(a *appGraph) *commands.Deps { return a.Commands }))...)
 	app.AddCobra(providers.PlatformCommands()...)

@@ -198,3 +198,37 @@ func TestSectionMetadataIsDetached(t *testing.T) {
 		t.Fatal("recursive slice accepted")
 	}
 }
+
+func TestMetadataDefaultsSurviveLoad(t *testing.T) {
+	type settings struct {
+		Count    int           `env:"OLD_COUNT" env-default:"12"`
+		Password string        `env:"OLD_PASSWORD" env-default:"secret-tag" secret:"true"`
+		Timeout  time.Duration `env:"OLD_TIMEOUT" env-default:"3s"`
+	}
+	s := settings{Count: 4, Password: "secret-initial"}
+	l, err := config.New(config.Section{Key: "app", Value: &s, LegacyEnv: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Count != 4 || s.Timeout != 0 {
+		t.Fatal("metadata mutated target")
+	}
+	before := fmt.Sprint(l.Sections())
+	if strings.Contains(before, "secret-tag") || strings.Contains(before, "secret-initial") {
+		t.Fatal("default leaked")
+	}
+	if err := l.Load(strings.NewReader("app: {Count: 99, count: 99}"), func(k string) (string, bool) { return "21", k == "OLD_COUNT" }); err != nil {
+		t.Fatal(err)
+	}
+	if s.Count != 21 || fmt.Sprint(l.Sections()) != before {
+		t.Fatal("metadata contains loaded values")
+	}
+	fields := l.Fields()
+	if fields[0].Default != "12" || fields[1].Default != "[REDACTED]" || fields[2].Default != "3s" {
+		t.Fatalf("defaults: %v", fields)
+	}
+	fields[0].Default = "changed"
+	if l.Fields()[0].Default != "12" {
+		t.Fatal("default snapshot aliased")
+	}
+}

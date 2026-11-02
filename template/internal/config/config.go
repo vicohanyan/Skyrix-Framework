@@ -69,6 +69,27 @@ type TenantCache struct {
 	TTL time.Duration `yaml:"TENANT_CACHE_TTL" env:"TENANT_CACHE_TTL" env-default:"3m"`
 }
 
+type identity struct {
+	Env         string `yaml:"APP_ENV" env:"APP_ENV"`
+	ServiceName string `yaml:"SERVICE_NAME" env:"SERVICE_NAME"`
+	Version     string `yaml:"APP_VERSION" env:"APP_VERSION"`
+}
+
+// Sections returns fresh default targets for the console environment reference.
+// Keep this explicit list in sync with the sections used by application providers.
+// No files, environment variables or infrastructure are accessed here.
+func Sections() []sections.Section {
+	return []sections.Section{
+		{Key: "app", Value: &identity{}, YAMLPath: []string{}, LegacyEnv: true},
+		{Key: "logger", Value: &Logger{}, YAMLPath: []string{"LOGGER"}, LegacyEnv: true},
+		{Key: "http", Value: &HttpServer{}, YAMLPath: []string{"HTTP_SERVER"}, LegacyEnv: true},
+		{Key: "database", Value: &Database{}, YAMLPath: []string{"DATABASE"}, LegacyEnv: true},
+		{Key: "redis", Value: &Redis{}, YAMLPath: []string{"REDIS"}, LegacyEnv: true},
+		{Key: "auth", Value: &JWT{}, YAMLPath: []string{"JWT"}, LegacyEnv: true},
+		{Key: "tenant", Value: &TenantCache{}, YAMLPath: []string{"TENANT_CACHE"}, LegacyEnv: true},
+	}
+}
+
 // LoadConfig loads application identity and logger only. Infrastructure sections
 // are loaded by the providers actually used by a binary's Wire graph.
 func LoadConfig() (*Config, error) {
@@ -88,11 +109,7 @@ func LoadConfig() (*Config, error) {
 		cfg.source = data
 		break
 	}
-	identity := struct {
-		Env         string `yaml:"APP_ENV" env:"APP_ENV"`
-		ServiceName string `yaml:"SERVICE_NAME" env:"SERVICE_NAME"`
-		Version     string `yaml:"APP_VERSION" env:"APP_VERSION"`
-	}{}
+	identity := identity{}
 	if err := cfg.LoadSection("app", []string{}, &identity); err != nil {
 		return nil, err
 	}

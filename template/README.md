@@ -126,6 +126,8 @@ credentials or private keys.
 
 ```bash
 cobra --help
+cobra config:env                  # env names, types and safe defaults
+cobra config:env --section redis  # exact section key
 cobra db migrate                 # apply pending SQL migrations
 cobra db migrate:status          # state of the migrations
 cobra db migrate:baseline        # mark migrations up to a version as applied
@@ -146,7 +148,7 @@ when the command runs. Help and completion (`cobra`, `--help` of any command,
 dependency graph and connect to nothing. A command builds only the graph it
 needs, right before it runs (`cmd/cobra/console.go`):
 
-- `make`, `db migrate*` and platform-module commands are standalone;
+- `config:env`, `make`, `db migrate*` and platform-module commands are standalone;
   `db migrate*` connect only to PostgreSQL;
 - `db automigrate` and `db seed` build the database graph (`buildDatabase`:
   config, logger, PostgreSQL, models, seeders);
@@ -156,6 +158,18 @@ needs, right before it runs (`cmd/cobra/console.go`):
 Framework commands come from the framework (`cobra/corecmd`); the
 application supplies only its data: GORM models and seeders for
 `db automigrate` / `db seed` in `internal/database`.
+
+`config:env` lists all fields sorted by section key and env name, with their Go
+types and declared defaults. `--section` accepts the keys `app`, `logger`, `http`,
+`database`, `redis`, `auth` and `tenant`; unknown keys return an error. Secret
+defaults are `[REDACTED]`. Empty strings and zeroes represent unset defaults,
+not required settings supplied at runtime. YAML development values are not defaults
+in this reference. The command reads neither YAML nor environment values and
+calls neither configuration loading/validation nor the application Wire graph.
+The application explicitly supplies fresh section descriptions through
+`internal/config.Sections()` in `cmd/cobra/console.go`; add available sections
+there when extending application configuration. Logger and infrastructure
+providers keep their existing loading behavior.
 
 ### Adding an application command
 

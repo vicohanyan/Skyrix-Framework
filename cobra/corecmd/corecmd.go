@@ -1,10 +1,12 @@
 // Package corecmd assembles the console commands built into the framework
-// (db, jobs:run, make). Application commands are registered next to them on
+// (db, jobs:run, make, config:env). Application commands are registered next to them on
 // the same console.Console.
 package corecmd
 
 import (
+	"gitlab.com/skyrix-lib/framework/cobra/configcmd"
 	"gitlab.com/skyrix-lib/framework/cobra/console"
+	"gitlab.com/skyrix-lib/framework/config"
 	"gitlab.com/skyrix-lib/framework/database/dbcmd"
 	"gitlab.com/skyrix-lib/framework/database/migrate/migratecmd"
 	engineJobs "gitlab.com/skyrix-lib/framework/engine/jobs"
@@ -15,6 +17,8 @@ import (
 // Options are what the framework commands get when they run. Describing the
 // commands builds none of the graphs.
 type Options struct {
+	// ConfigSections are fresh default section descriptions for config:env.
+	ConfigSections []config.Section
 	// Migrations are the standalone db migrate* commands; nil leaves them
 	// out of the db group.
 	Migrations *migratecmd.Commands
@@ -30,7 +34,7 @@ type Options struct {
 }
 
 // Commands describes the framework commands: the db group (migrate*,
-// automigrate, seed), jobs:run and make.
+// automigrate, seed), jobs:run, make and config:env.
 func Commands(options Options) []*console.Command {
 	make := options.Make
 	if make == nil {
@@ -40,5 +44,6 @@ func Commands(options Options) []*console.Command {
 		dbcmd.Command(options.Migrations, options.Database),
 		jobscmd.Command(options.Jobs),
 		make.Command(),
+		configcmd.Env(options.ConfigSections...),
 	}
 }
