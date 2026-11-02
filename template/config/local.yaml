@@ -26,6 +26,8 @@ REDIS:
   REDIS_PORT: 6379
   REDIS_PASS: ""
   REDIS_DB: 0
+  # Required: root of every Redis key of this service (no default).
+  REDIS_KEY_PREFIX: skyrix-framework
 
 JWT:
   JWT_PUBLIC_KEY_PATH: "/run/secrets/jwt/public.pem"
@@ -33,6 +35,9 @@ JWT:
   JWT_ALGORITHM: RS256
   JWT_ISSUER: skyrix-auth
   JWT_AUDIENCE: ""
+  # Token roles accepted by the auth middleware; empty accepts every role.
+  # Add roles here as the token issuer introduces them.
+  JWT_ALLOWED_ROLES: [customer]
 
 QUEUE:
   QUEUE_ENABLED: false
@@ -47,4 +52,3 @@ QUEUE:
 
 TENANT_CACHE:
   TENANT_CACHE_TTL: 3m
-  TENANT_CACHE_KEY_PREFIX: skyrix-framework

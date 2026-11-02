@@ -100,6 +100,12 @@ APP_ENV=local go run ./cmd/http
   `APP_PORT`, `DB_HOST`, `REDIS_HOST`, `QUEUE_HOST`, and
   `JWT_PUBLIC_KEY_PATH`.
 
+- `REDIS_KEY_PREFIX` is required whenever a binary uses Redis and has no
+  default: it is the root of every Redis key the service writes
+  (`<prefix>:<namespace>:...`, for example `<prefix>:tenant:domain:<host>` or
+  `<prefix>:auth:sess:<jti>`), so services sharing a Redis database do not
+  collide. Set it to a value unique to the service.
+
 Do not commit production credentials or private keys. The checked-in local
 values are development defaults only.
 
@@ -150,8 +156,9 @@ and partial indexes. Delivery-zone import requires PostGIS.
 Console commands are assembled from two independent Wire graphs:
 
 - `internal/commands.ProviderSet` contains application-specific commands;
-- `internal/scaffold.ProviderSet` contains framework maintenance and
-  scaffolding commands.
+- `providers.CoreCommandSet` contains the commands built into the framework
+  (`db`, `jobs:run`, `make`); add GORM models and seeders for `db automigrate`
+  and `db seed` in `internal/database`.
 
 To add an application command, place it in `internal/commands`, add its
 constructor to `internal/commands/provider.go`, accept it in `NewCommands`, and
@@ -252,7 +259,7 @@ infra/go/                 local, debug, and production Dockerfiles
 infra/postgres/           PostgreSQL/PostGIS image
 internal/adapter/         external service adapters
 internal/domain/          delivery domain modules
-internal/scaffold/        application maintenance Cobra command assembly
+internal/database/        models and seeders for the framework db commands
 internal/commands/        application-specific Cobra commands
 internal/handlers/        HTTP handlers
 internal/jobs/            background jobs

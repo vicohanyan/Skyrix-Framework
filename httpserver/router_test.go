@@ -11,7 +11,7 @@ import (
 
 func TestSystemMetricsRoute(t *testing.T) {
 	r := chi.NewRouter()
-	RegisterSystemRoutes(r)
+	RegisterSystemRoutes(r, nil)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/metrics", http.NoBody)

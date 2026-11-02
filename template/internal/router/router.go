@@ -22,6 +22,7 @@ func InitRouter(
 	globalMw *providers.GlobalMiddleware,
 	tenantMw TenantMiddleware,
 	handlers *providers.Handlers,
+	healthChecks httpserver.HealthChecks,
 ) http.Handler {
 	r := httpserver.NewRouter(httpserver.RouterOptions{
 		Timeout:    cfg.Timeout,
@@ -29,7 +30,7 @@ func InitRouter(
 		Decompress: globalMw.GzipDecompress.Handle,
 	})
 
-	httpserver.RegisterSystemRoutes(r)
+	httpserver.RegisterSystemRoutes(r, healthChecks)
 	r.Route("/api/v1", func(r chi.Router) {
 		mountExampleRoutes(r, handlers)
 	})

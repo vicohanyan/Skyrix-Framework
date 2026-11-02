@@ -2,24 +2,9 @@ package engine
 
 import (
 	"context"
-	"time"
 
 	"gorm.io/gorm"
 )
-
-type Cache interface {
-	// Get returns cached bytes by key. The bool indicates cache hit.
-	Get(ctx context.Context, key string) ([]byte, bool, error)
-	// Set stores bytes with TTL; ttl<=0 semantics depend on implementation.
-	Set(ctx context.Context, key string, val []byte, ttl time.Duration) error
-	// Del removes a cache entry.
-	Del(ctx context.Context, key string) error
-	// DeleteIfValue removes a cache entry only when its current value equals expected.
-	// It must be implemented atomically by the cache adapter.
-	DeleteIfValue(ctx context.Context, key string, expected []byte) (bool, error)
-	// Exists reports whether a key is present.
-	Exists(ctx context.Context, key string) (bool, error)
-}
 
 type DB interface {
 	// WithContext returns a new session bound to the supplied context

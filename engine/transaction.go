@@ -2,7 +2,8 @@ package engine
 
 import (
 	"context"
-	"gitlab.com/skyrix-lib/framework/logging"
+
+	"gitlab.com/skyrix-lib/framework/logger"
 
 	"gorm.io/gorm"
 )

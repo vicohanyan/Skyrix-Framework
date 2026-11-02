@@ -3,7 +3,7 @@ package cobra
 import (
 	"context"
 
-	"gitlab.com/skyrix-lib/framework/logging"
+	"gitlab.com/skyrix-lib/framework/logger"
 
 	spfcobra "github.com/spf13/cobra"
 )

@@ -3,8 +3,9 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"gitlab.com/skyrix-lib/framework/logging"
 	"time"
+
+	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 // ExecuteJob runs a job synchronously with retry/backoff and panic protection.

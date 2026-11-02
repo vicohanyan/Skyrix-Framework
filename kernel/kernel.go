@@ -23,3 +23,10 @@ type Kernel interface {
 type FailureNotifier interface {
 	Failed() <-chan error
 }
+
+// HealthChecker is implemented by components that can report whether they
+// are usable, such as database connections. Check returns nil when healthy
+// and must respect ctx.
+type HealthChecker interface {
+	Check(context.Context) error
+}

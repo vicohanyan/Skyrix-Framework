@@ -4,7 +4,7 @@ import (
 	"io/fs"
 
 	"gitlab.com/skyrix-lib/framework/database/migrate/migratecmd"
-	"gitlab.com/skyrix-lib/framework/logging"
+	"gitlab.com/skyrix-lib/framework/logger"
 	"gitlab.com/skyrix-lib/template/internal/config"
 	"gitlab.com/skyrix-lib/template/migrations"
 
@@ -20,9 +20,10 @@ func ProvideMigrationSettings() migratecmd.SettingsLoader {
 			return migratecmd.Settings{}, err
 		}
 		return migratecmd.Settings{
-			Postgres: ProvidePostgresOptions(&cfg.Database),
-			Logger:   logger.NewLogger(cfg.Logger),
-			AtlasEnv: cfg.Env,
+			Postgres:   ProvidePostgresOptions(&cfg.Database),
+			AppVersion: cfg.Version,
+			Logger:     logger.NewLogger(cfg.Logger),
+			AtlasEnv:   cfg.Env,
 		}, nil
 	}
 }

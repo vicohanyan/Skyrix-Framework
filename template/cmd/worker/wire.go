@@ -10,9 +10,10 @@ import (
 	"github.com/goforj/wire"
 )
 
-// buildWorkerApp builds the worker graph. It has no HTTP server and no
-// database; add providers.PostgresSet or providers.RedisSet and the domain
-// sets when subscribers need them.
+// buildWorkerApp builds the worker graph. It has no HTTP server, no database
+// and no Redis; add providers.PostgresSet or providers.RedisSet and the domain
+// sets when subscribers need them, and pass their *enginepostgres.Component or
+// *engineredis.Component to newWorkerApp as the first runtime components.
 func buildWorkerApp() (*workerApp, func(), error) {
 	wire.Build(
 		// 1. Configuration and logger

@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strings"
 
-	"gitlab.com/skyrix-lib/framework/logging"
-	authservice "gitlab.com/skyrix-lib/template/internal/auth/service"
+	"gitlab.com/skyrix-lib/framework/extensions/auth/security"
+	authservice "gitlab.com/skyrix-lib/framework/extensions/auth/service"
+	"gitlab.com/skyrix-lib/framework/logger"
 	"gitlab.com/skyrix-lib/template/internal/config"
 	"gitlab.com/skyrix-lib/template/internal/contextkeys"
-	"gitlab.com/skyrix-lib/template/internal/utils/security"
 )
 
 type AuthIdentity struct {

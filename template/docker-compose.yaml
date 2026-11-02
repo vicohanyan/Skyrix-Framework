@@ -27,6 +27,7 @@ services:
       - DB_PORT=5432
       - REDIS_HOST=delivery-redis
       - REDIS_PORT=6379
+      - REDIS_KEY_PREFIX=skyrix-framework
       - QUEUE_HOST=nats
       - QUEUE_PORT=4222
       - QUEUE_NAME=skyrix-queue
@@ -74,7 +75,7 @@ services:
           - skyrix-delivery-postgres
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: always
     command: ["redis-server", "--appendonly", "yes"]
     volumes:

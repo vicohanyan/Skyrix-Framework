@@ -10,16 +10,16 @@ import (
 	"gitlab.com/skyrix-lib/eventbus"
 	"gitlab.com/skyrix-lib/eventbus/platform"
 	"gitlab.com/skyrix-lib/framework/cobra"
+	"gitlab.com/skyrix-lib/framework/cobra/corecmd"
+	"gitlab.com/skyrix-lib/framework/database/dbcmd"
 	"gitlab.com/skyrix-lib/framework/database/migrate/migratecmd"
-	"gitlab.com/skyrix-lib/framework/engine"
 	"gitlab.com/skyrix-lib/framework/engine/jobs"
 	"gitlab.com/skyrix-lib/framework/engine/jobs/jobscmd"
+	"gitlab.com/skyrix-lib/framework/engine/postgres"
 	"gitlab.com/skyrix-lib/framework/scaffold/makecmd"
 	"gitlab.com/skyrix-lib/template/internal/commands"
 	"gitlab.com/skyrix-lib/template/internal/database"
 	jobs2 "gitlab.com/skyrix-lib/template/internal/jobs"
-	"gitlab.com/skyrix-lib/template/internal/scaffold"
-	"gitlab.com/skyrix-lib/template/internal/scaffold/db"
 	"gitlab.com/skyrix-lib/template/providers"
 )
 
@@ -34,24 +34,22 @@ func buildConsoleApp() (*cobra.ConsoleApp, func(), error) {
 	helloCommand := commands.NewHelloCommand()
 	commandsCommands := commands.NewCommands(helloCommand)
 	configDatabase := providers.ProvideDatabaseConfig(config)
-	postgresOptions := providers.ProvidePostgresOptions(configDatabase)
-	gormDB, cleanup, err := engine.ProvidePostgres(postgresOptions, loggerInterface)
+	postgresConfig := providers.ProvidePostgresOptions(configDatabase)
+	db, cleanup, err := postgres.Provide(postgresConfig, loggerInterface)
 	if err != nil {
 		return nil, nil, err
 	}
-	engineDatabase, err := providers.ProvideDatabaseService(gormDB, config)
+	engineDatabase, err := providers.ProvideDatabaseService(db, config)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	dbSeeder := database.NewDBSeeder(engineDatabase, loggerInterface)
-	dbMigrator := database.NewDBMigrator(engineDatabase, loggerInterface, dbSeeder)
-	dbAutoMigrateCommand := db.NewDBAutoMigrateCommand(dbMigrator)
-	dbSeedCommand := db.NewDBSeedCommand(dbSeeder)
 	settingsLoader := providers.ProvideMigrationSettings()
 	fs := providers.ProvideMigrationSource()
 	migratecmdCommands := migratecmd.New(settingsLoader, fs)
-	dbCommand := db.NewDBCommand(dbAutoMigrateCommand, dbSeedCommand, migratecmdCommands)
+	models := database.Models()
+	seeders := database.Seeders()
+	dbcmdCommands := dbcmd.New(engineDatabase, loggerInterface, migratecmdCommands, models, seeders)
 	runtimeRegistry := jobs.NewRegistry(loggerInterface)
 	systemPingJob := jobs2.NewSystemPingJob(loggerInterface)
 	providersJobs := &providers.Jobs{
@@ -60,7 +58,7 @@ func buildConsoleApp() (*cobra.ConsoleApp, func(), error) {
 	v := providers.ProvideRegisteredJobsRegistry(runtimeRegistry, providersJobs)
 	jobsRunCommand := jobscmd.NewJobsRunCommand(v)
 	makeCommand := makecmd.NewMakeCommand()
-	scaffoldCommands := scaffold.NewCommands(dbCommand, jobsRunCommand, makeCommand)
+	corecmdCommands := corecmd.New(dbcmdCommands, jobsRunCommand, makeCommand)
 	eventBus := &config.EventBus
 	v2 := platform.ProvideLogger(loggerInterface)
 	v3, cleanup2, err := eventbus.ProvideBus(eventBus, v2)
@@ -76,7 +74,7 @@ func buildConsoleApp() (*cobra.ConsoleApp, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	commandGroups := providers.ProvideCobraCommandGroups(commandsCommands, scaffoldCommands, kernelPlatform)
+	commandGroups := providers.ProvideCobraCommandGroups(commandsCommands, corecmdCommands, kernelPlatform)
 	consoleApp := cobra.NewConsoleApp(loggerInterface, commandGroups)
 	return consoleApp, func() {
 		cleanup2()
@@ -86,11 +84,11 @@ func buildConsoleApp() (*cobra.ConsoleApp, func(), error) {
 
 // buildStandaloneCommands builds the commands that run without the application
 // container. Building them reads no configuration and opens no connection.
-func buildStandaloneCommands() *scaffold.StandaloneCommands {
+func buildStandaloneCommands() *corecmd.StandaloneCommands {
 	settingsLoader := providers.ProvideMigrationSettings()
 	fs := providers.ProvideMigrationSource()
 	migratecmdCommands := migratecmd.New(settingsLoader, fs)
 	makeCommand := makecmd.NewMakeCommand()
-	standaloneCommands := scaffold.NewStandaloneCommands(migratecmdCommands, makeCommand)
+	standaloneCommands := corecmd.NewStandalone(migratecmdCommands, makeCommand)
 	return standaloneCommands
 }

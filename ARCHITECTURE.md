@@ -68,7 +68,14 @@ Internal packages represent the **platform layer**:
 - Technical responsibilities (db, redis, transactions, http wiring, middleware)
 - Domain-agnostic by design
 - Public mechanisms are imported by the template
-- Redis and PostgreSQL client construction remain hidden behind framework `internal/`
+- PostgreSQL is infrastructure in `engine/postgres`: configuration,
+  `*gorm.DB`/`*sql.DB` and the lifecycle `Component` with `Check`.
+  `engine.Database` adds tenant schema switching on top
+- Redis is infrastructure in `engine/redis`: configuration, `*redis.Client`
+  (go-redis, not wrapped), the lifecycle `Component` (Start pings, Stop
+  closes, `Check` is the health check) and `Keyspace` for key prefixes. It
+  does not know its consumers; auth, the tenant cache and others build their
+  own stores on the client, each in its own key namespace
 
 ---
 
@@ -100,6 +107,17 @@ Assembly is responsible for:
 - dependency injection wiring (Wire-based),
 - HTTP routes/handlers registration.
 
+Assembly goes from the root of the dependency graph to the leaves, both in
+`wire.Build` and in the runtime component order:
+
+1. engine (microkernel infrastructure): configuration, logger, `PostgresSet`,
+   `RedisSet` and their components;
+2. platform packages: EventBus, tenant, auth and other modules;
+3. domains and the hosts that serve them (HTTP host, subscribers).
+
+`kernel.Runtime` starts components in this order and stops them in reverse,
+so a host never runs without the database or platform modules it uses.
+
 `template/providers` is reserved for application runtime composition and
 configuration: domains, handlers, jobs, middleware, infrastructure, and
 platform components. Console commands are composed separately and are not
@@ -111,8 +129,9 @@ The console application combines two independent Wire graphs:
 
 - `internal/commands.ProviderSet` — application-specific commands maintained by
   the service;
-- `internal/scaffold.ProviderSet` — framework-internal maintenance and
-  scaffolding commands.
+- `providers.CoreCommandSet` — the commands built into the framework
+  (`cobra/corecmd`: `db` from `database/dbcmd`, `jobs:run`, `make`); the
+  application supplies only `internal/database` models and seeders.
 
 Both graphs are included by `template/cmd/cobra/wire.go` and are passed to
 `cobra.ConsoleApp`, which mounts both command lists on the Cobra root. This

@@ -2,13 +2,14 @@ package middleware
 
 import (
 	"errors"
-	"gitlab.com/skyrix-lib/framework/extensions/tenant/context"
-	"gitlab.com/skyrix-lib/framework/extensions/tenant/schemaResolver"
 	"net/http"
 	"strings"
 
+	"gitlab.com/skyrix-lib/framework/extensions/tenant/context"
+	"gitlab.com/skyrix-lib/framework/extensions/tenant/schemaResolver"
+
 	"gitlab.com/skyrix-lib/framework/engine"
-	"gitlab.com/skyrix-lib/framework/logging"
+	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 type TenantMiddleware struct {

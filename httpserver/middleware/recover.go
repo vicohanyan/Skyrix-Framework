@@ -5,7 +5,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"gitlab.com/skyrix-lib/framework/logging"
+	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 type RecoverMiddleware struct {

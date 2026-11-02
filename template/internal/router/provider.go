@@ -1,6 +1,7 @@
 package router
 
 import (
+	"gitlab.com/skyrix-lib/framework/httpserver"
 	"gitlab.com/skyrix-lib/template/internal/config"
 	"gitlab.com/skyrix-lib/template/providers"
 	"net/http"
@@ -13,8 +14,9 @@ func ProvideRouter(
 	globalMw *providers.GlobalMiddleware,
 	tenantMw TenantMiddleware,
 	handlers *providers.Handlers,
+	healthChecks httpserver.HealthChecks,
 ) http.Handler {
-	return InitRouter(cfg, globalMw, tenantMw, handlers)
+	return InitRouter(cfg, globalMw, tenantMw, handlers, healthChecks)
 }
 
 var ProviderSet = wire.NewSet(

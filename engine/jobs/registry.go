@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	kerneljobs "gitlab.com/skyrix-lib/framework/kernel/jobs"
-	"gitlab.com/skyrix-lib/framework/logging"
+	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 type RuntimeRegistry struct {

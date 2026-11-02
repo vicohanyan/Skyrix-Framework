@@ -14,18 +14,20 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"gitlab.com/skyrix-lib/framework/buildinfo"
 	"gitlab.com/skyrix-lib/framework/database/migrate"
 	"gitlab.com/skyrix-lib/framework/database/migrate/atlas"
-	"gitlab.com/skyrix-lib/framework/engine"
-	"gitlab.com/skyrix-lib/framework/logging"
+	"gitlab.com/skyrix-lib/framework/engine/postgres"
+	"gitlab.com/skyrix-lib/framework/logger"
 
 	"github.com/spf13/cobra"
 )
 
 // Settings are what the migration commands need from the application.
 type Settings struct {
-	Postgres engine.PostgresOptions
+	Postgres postgres.Config
+	// AppVersion is recorded with every applied migration; optional. The
+	// application sets it, for example from its own -ldflags variable.
+	AppVersion string
 	// Logger receives runner progress; optional.
 	Logger logger.Interface
 	// AtlasEnv names the atlas.hcl env used by migrate:diff; default "local".
@@ -82,12 +84,12 @@ func (c *Commands) Open(ctx context.Context, options ...migrate.Option) (*migrat
 	if err != nil {
 		return nil, nil, err
 	}
-	db, err := engine.OpenPostgresSQL(ctx, settings.Postgres)
+	db, err := postgres.OpenSQL(ctx, settings.Postgres)
 	if err != nil {
 		return nil, nil, fmt.Errorf("connect to postgres: %w", err)
 	}
 
-	all := []migrate.Option{migrate.WithAppVersion(buildinfo.Version)}
+	all := []migrate.Option{migrate.WithAppVersion(settings.AppVersion)}
 	if settings.Logger != nil {
 		all = append(all, migrate.WithLogger(settings.Logger))
 	}

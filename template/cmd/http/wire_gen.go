@@ -9,7 +9,7 @@ package main
 import (
 	"gitlab.com/skyrix-lib/eventbus"
 	"gitlab.com/skyrix-lib/eventbus/platform"
-	"gitlab.com/skyrix-lib/framework/engine"
+	"gitlab.com/skyrix-lib/framework/engine/postgres"
 	"gitlab.com/skyrix-lib/framework/httpserver"
 	middleware2 "gitlab.com/skyrix-lib/framework/httpserver/middleware"
 	"gitlab.com/skyrix-lib/framework/validation"
@@ -29,17 +29,30 @@ func buildHTTPApp() (*httpApp, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	eventBus := &config.EventBus
+	database := providers.ProvideDatabaseConfig(config)
+	postgresConfig := providers.ProvidePostgresOptions(database)
 	loggerInterface := providers.ProvideLogger(config)
-	v := platform.ProvideLogger(loggerInterface)
-	v2, cleanup, err := eventbus.ProvideBus(eventBus, v)
+	db, cleanup, err := postgres.Provide(postgresConfig, loggerInterface)
 	if err != nil {
+		return nil, nil, err
+	}
+	component, err := postgres.NewComponent(db)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	eventBus := &config.EventBus
+	v := platform.ProvideLogger(loggerInterface)
+	v2, cleanup2, err := eventbus.ProvideBus(eventBus, v)
+	if err != nil {
+		cleanup()
 		return nil, nil, err
 	}
 	runtime := platform.NewRuntime(v2)
 	module := platform.NewModule(runtime)
 	kernelPlatform, err := providers.ProvidePlatform(module)
 	if err != nil {
+		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
@@ -47,8 +60,8 @@ func buildHTTPApp() (*httpApp, func(), error) {
 	manyRequestsMiddleware := middleware.NewManyRequestsMiddleware()
 	recoverMiddleware := middleware2.NewRecoverMiddleware(loggerInterface)
 	gzipDecompressMiddleware := middleware2.NewGzipDecompressMiddleware(loggerInterface)
-	jwt := providers.ProvideJWTConfig(config)
-	authMiddleware := middleware.NewAuthMiddleware(loggerInterface, jwt)
+	v3 := providers.ProvideJWTConfig(config)
+	authMiddleware := middleware.NewAuthMiddleware(loggerInterface, v3)
 	globalMiddleware := &providers.GlobalMiddleware{
 		ManyRequests:   manyRequestsMiddleware,
 		Recover:        recoverMiddleware,
@@ -57,13 +70,6 @@ func buildHTTPApp() (*httpApp, func(), error) {
 	}
 	noopTenantMiddleware := router.NewNoopTenantMiddleware()
 	validator := validation.NewValidator()
-	database := providers.ProvideDatabaseConfig(config)
-	postgresOptions := providers.ProvidePostgresOptions(database)
-	db, cleanup2, err := engine.ProvidePostgres(postgresOptions, loggerInterface)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
-	}
 	engineDatabase, err := providers.ProvideDatabaseService(db, config)
 	if err != nil {
 		cleanup2()
@@ -77,11 +83,12 @@ func buildHTTPApp() (*httpApp, func(), error) {
 	providersHandlers := &providers.Handlers{
 		ExampleTask: exampleTaskHandler,
 	}
-	handler := router.ProvideRouter(httpServer, globalMiddleware, noopTenantMiddleware, providersHandlers)
+	healthChecks := providers.ProvideHealthChecks(component)
+	handler := router.ProvideRouter(httpServer, globalMiddleware, noopTenantMiddleware, providersHandlers, healthChecks)
 	options := providers.ProvideHTTPServerOptions(httpServer)
 	server := httpserver.NewServer(handler, options)
 	host := httpserver.NewHost(server, loggerInterface)
-	mainHttpApp := newHTTPApp(kernelPlatform, host, loggerInterface)
+	mainHttpApp := newHTTPApp(component, kernelPlatform, host, loggerInterface)
 	return mainHttpApp, func() {
 		cleanup2()
 		cleanup()

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/skyrix-lib/framework/extensions/auth/security"
 	"gitlab.com/skyrix-lib/template/internal/config"
-	"gitlab.com/skyrix-lib/template/internal/utils/security"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -86,14 +86,14 @@ func TestAuthMiddlewareValidTokenAddsIdentity(t *testing.T) {
 }
 
 func TestStoreIDFromIdentityRejectsMissingStoreSubject(t *testing.T) {
-	_, err := StoreIDFromIdentity(AuthIdentity{UserID: 42, Subject: "user:42", Role: security.RoleStoreOperator})
+	_, err := StoreIDFromIdentity(AuthIdentity{UserID: 42, Subject: "user:42", Role: security.Role("store_operator")})
 	if err == nil {
 		t.Fatal("StoreIDFromIdentity() error = nil, want missing store identity error")
 	}
 }
 
 func TestStoreIDFromIdentityUsesCatalogStoreSubject(t *testing.T) {
-	storeID, err := StoreIDFromIdentity(AuthIdentity{UserID: 42, Subject: "store:store-one", Role: security.RoleStoreManager})
+	storeID, err := StoreIDFromIdentity(AuthIdentity{UserID: 42, Subject: "store:store-one", Role: security.Role("store_manager")})
 	if err != nil {
 		t.Fatalf("StoreIDFromIdentity() error = %v", err)
 	}

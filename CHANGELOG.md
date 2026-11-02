@@ -33,8 +33,46 @@ support v0.2.x.
   interface.
 - `kernel/jobs` contains only the `Job` and `Registry` contracts. The in-memory
   registry moved to `engine/jobs` as `RuntimeRegistry` (`engine/jobs.NewRegistry`).
-- `kernel.PostgresOptions`, `kernel.RedisOptions`, `kernel.ProvidePostgres` and
-  `kernel.ProvideRedis` moved to the `engine` package.
+- PostgreSQL is infrastructure in `engine/postgres`: `Config` (with quoted
+  DSN, `SSLMode` and pool settings), `Open`/`Provide` (`*gorm.DB`), `OpenSQL`
+  (`*sql.DB`), and the `kernel.Component` lifecycle (`NewComponent`: Start
+  pings, Stop closes, `Check` is the health check). `Open` no longer pings;
+  add the component to the runtime. Removed: `kernel`/`engine.PostgresOptions`,
+  `ProvidePostgres`, `engine.OpenPostgresSQL` and `internal/postgres`.
+- The `buildinfo` package is removed. The application passes its version to
+  the migration commands with `migratecmd.Settings.AppVersion`.
+- Auth moved from the template to `extensions/auth` (`contracts`, `context`,
+  `middleware`, `security`, `service`, `storage`). `service.Config` replaces
+  the template `config.JWT`; `middleware.NewAuthMiddleware` takes
+  `middleware.Options{Roles}` (empty allows every role) and stores the claims
+  with `auth/context.WithClaims` instead of template context keys.
+- `httpserver.RegisterSystemRoutes(r, checks)` takes `httpserver.HealthChecks`.
+  `GET /health` no longer always answers `ok`: it runs every check
+  (`kernel.HealthChecker`, implemented by the PostgreSQL and Redis
+  components) in parallel within 2 seconds and returns 200 or 503 with the
+  status of each check as JSON; check errors are not exposed.
+- `extensions/auth/security` defines no role constants. Roles come from the
+  configuration: `service.Config.AllowedRoles` (`JWT_ALLOWED_ROLES`) and
+  `middleware.OptionsFromConfig`.
+- `httpserver/gzip`: `GzipBytes` and `GunzipBytesWithLimit` (moved from the
+  template's `internal/utils/gzip`). `FastCompressionLevel` is now
+  `gzip.BestSpeed` (was 5, the same as `OptimalCompressionLevel`), and
+  exceeding the limit returns `gzip.ErrTooLarge` instead of
+  `io.ErrUnexpectedEOF`.
+- The `db` console group (`migrate*`, `automigrate`, `seed`) is built into the
+  framework (`database/dbcmd`); the application supplies only `dbcmd.Models`
+  and `dbcmd.Seeders`. `cobra/corecmd` assembles the framework commands
+  (`db`, `jobs:run`, `make`) and the standalone ones.
+- Redis is rebuilt as infrastructure in `engine/redis`. Removed:
+  `engine.Redis`, `engine.NewRedisService`, `engine.RedisOpts`,
+  `engine.RedisOptions`, `engine.ProvideRedis`, the `engine.Cache` interface
+  and `internal/redis`. Use `engine/redis.Config`, `Open`/`Provide`
+  (`*redis.Client` from go-redis), `NewComponent` and `Keyspace` instead.
+  `Config.KeyPrefix` is required and has no default; the hardcoded
+- `extensions/tenant/service.NewTenantService(log, repo, cache)` takes a
+  `service.Cache` (implemented by `extensions/tenant/cache.RedisCache`);
+  `service.CacheOpts` is removed. Cache keys are unchanged below the prefix:
+  `<prefix>:tenant:namespace:<ns>`, `<prefix>:tenant:domain:<domain>`.
 - `engine.Runtime` and `engine.NewRuntime` moved to `kernel.Runtime` and
   `kernel.NewRuntime`; the `engine.Platform` alias is removed.
 - `httpserver.HTTPApp` and `httpserver.NewHTTPApp` are removed. The HTTP server
@@ -62,8 +100,13 @@ support v0.2.x.
   start and reports serving errors as failures.
 - `database/migrate`: forward-only SQL migrations in the Atlas directory format
   with run numbers, checksums, baselines and a Postgres advisory lock; standard
-  library only. `engine.OpenPostgresSQL` opens a `database/sql` pool without
-  GORM, and `buildinfo.Version` carries the application version via ldflags.
+  library only. `engine/postgres.OpenSQL` opens a `database/sql` pool without
+  GORM.
+- `engine/redis`: Redis connection (`Config` with address, credentials, DB,
+  TLS, pool and timeouts, and the required `KeyPrefix`), the
+  `kernel.Component` lifecycle with a `Check` health check, and `Keyspace`
+  (`Sub`, `Key`) so the services and consumers sharing a Redis database do not
+  collide. A dependency test keeps the package free of its consumers.
 - Framework code moved out of the template: `cmd/platformgen` (run with
   `go run gitlab.com/skyrix-lib/framework/cmd/platformgen`, `-config` sets the
   config package), `database/migrate/migratecmd` and `database/migrate/atlas`
@@ -87,6 +130,23 @@ support v0.2.x.
   `cmd/cobra` and `cmd/worker` (events and background work, no HTTP and no
   database). Infrastructure is split into `ConfigSet`, `PostgresSet` and
   `RedisSet` so each binary includes only what it uses.
+- Redis: `REDIS_KEY_PREFIX` is required (no default) and
+  `TENANT_CACHE_KEY_PREFIX` is removed. `RedisSet` provides `*redis.Client`,
+  the `engineredis.Keyspace` and `*engineredis.Component`; no template binary
+  includes it yet. `AuthProviderSet` wires `extensions/auth`. Auth storage is
+  split into `PassportStore`,
+  `TokenBlacklist`, `SessionStore` and `RefreshTokenStore`;
+  `RotateRefreshToken` is atomic and rejects unknown, expired, already used
+  or foreign tokens.
+- `PostgresSet` provides `*enginepostgres.Component`; runtimes start
+  components from the root of the dependency graph to the leaves (engine
+  infrastructure, platform modules, then hosts serving the domains) and stop
+  in reverse. `APP_VERSION` is recorded with applied migrations.
+- `/health` checks PostgreSQL (`providers.ProvideHealthChecks`); the auth
+  middleware accepts the roles in `JWT_ALLOWED_ROLES` (`[customer]`).
+- `internal/auth`, `internal/utils`, `internal/scaffold` and the
+  `DBMigrator`/`DBSeeder` are removed; `internal/database` lists only the
+  models and seeders for the framework db commands.
 - SQL migrations: `db migrate` (with `--steps` and `--to`), `db migrate:status`,
   `db migrate:baseline`, `db migrate:diff` (Atlas) and `make migration`. The
   former `db migrate` alias of `db automigrate` is removed; AutoMigrate is a

@@ -1,43 +1,49 @@
 package providers
 
 import (
-	"time"
+	"net"
+	"strconv"
 
 	"gitlab.com/skyrix-lib/framework/engine"
+	enginepostgres "gitlab.com/skyrix-lib/framework/engine/postgres"
+	engineredis "gitlab.com/skyrix-lib/framework/engine/redis"
 	"gitlab.com/skyrix-lib/framework/engine/scope"
-	"gitlab.com/skyrix-lib/framework/logging"
 	"gitlab.com/skyrix-lib/template/internal/config"
 
 	"github.com/goforj/wire"
-	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
-// PostgresSet opens PostgreSQL through GORM and provides *engine.Database.
-// Include it only in binaries that use the database.
+// PostgresSet opens PostgreSQL through GORM and provides *gorm.DB,
+// *engine.Database and the lifecycle *enginepostgres.Component. Include it
+// only in binaries that use the database, and add the component to the
+// binary's runtime before the components that use it.
 var PostgresSet = wire.NewSet(
 	ProvideDatabaseConfig,
 	ProvidePostgresOptions,
-	engine.ProvidePostgres,
+	enginepostgres.Provide,
+	enginepostgres.NewComponent,
 	ProvideDatabaseService,
 )
 
-// RedisSet connects to Redis and provides engine.Cache. Include it only in
-// binaries that use the cache.
+// RedisSet connects to Redis and provides *redis.Client (go-redis), the
+// application root engineredis.Keyspace (REDIS_KEY_PREFIX) and the lifecycle
+// *engineredis.Component. Include it only in binaries that use Redis, and add
+// the component to the binary's runtime before the components that use it.
 var RedisSet = wire.NewSet(
 	ProvideRedisConfig,
 	ProvideRedisOptions,
-	engine.ProvideRedis,
-	ProvideRedisService,
-	wire.Bind(new(engine.Cache), new(*engine.Redis)),
+	engineredis.Provide,
+	engineredis.ProvideKeyspace,
+	engineredis.NewComponent,
 )
 
 func ProvideDatabaseConfig(cfg *config.Config) *config.Database {
 	return &cfg.Database
 }
 
-func ProvidePostgresOptions(cfg *config.Database) engine.PostgresOptions {
-	return engine.PostgresOptions{
+func ProvidePostgresOptions(cfg *config.Database) enginepostgres.Config {
+	return enginepostgres.Config{
 		Host: cfg.Host, Port: cfg.Port, User: cfg.User, Password: cfg.Pass,
 		Database: cfg.Name, MainSchema: cfg.MainSchema,
 	}
@@ -54,16 +60,11 @@ func ProvideRedisConfig(cfg *config.Config) *config.Redis {
 	return &cfg.Redis
 }
 
-func ProvideRedisOptions(cfg *config.Redis) engine.RedisOptions {
-	return engine.RedisOptions{
-		Host: cfg.Host, Port: cfg.Port, Password: cfg.Pass, DB: cfg.Db,
+func ProvideRedisOptions(cfg *config.Redis) engineredis.Config {
+	return engineredis.Config{
+		Addr:      net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+		Password:  cfg.Pass,
+		DB:        cfg.Db,
+		KeyPrefix: cfg.KeyPrefix,
 	}
-}
-
-func ProvideRedisService(redisClient *redis.Client, log logger.Interface, cfg *config.Config) *engine.Redis {
-	redisOpts := engine.RedisOpts{
-		KeyPrefix: cfg.TenantCache.KeyPrefix,
-		StatusTTL: 5 * time.Minute,
-	}
-	return engine.NewRedisService(redisClient, log, redisOpts)
 }

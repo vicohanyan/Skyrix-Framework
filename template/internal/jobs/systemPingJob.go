@@ -4,7 +4,7 @@ import (
 	"context"
 
 	engineJobs "gitlab.com/skyrix-lib/framework/engine/jobs"
-	"gitlab.com/skyrix-lib/framework/logging"
+	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 // SystemPingJob is a safe, dependency-free framework job.

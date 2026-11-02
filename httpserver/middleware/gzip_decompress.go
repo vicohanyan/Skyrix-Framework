@@ -2,10 +2,11 @@ package middleware
 
 import (
 	"compress/gzip"
-	"gitlab.com/skyrix-lib/framework/logging"
 	"io"
 	"net/http"
 	"strings"
+
+	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 type GzipDecompressMiddleware struct {

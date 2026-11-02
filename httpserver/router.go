@@ -43,16 +43,15 @@ func NewRouter(options RouterOptions) chi.Router {
 	return r
 }
 
-// RegisterSystemRoutes mounts transport-level endpoints shared by services.
-func RegisterSystemRoutes(r chi.Router) {
+// RegisterSystemRoutes mounts transport-level endpoints shared by services:
+// CORS preflight, /health (the checks of the binary's dependencies, see
+// HealthHandler) and /metrics.
+func RegisterSystemRoutes(r chi.Router, checks HealthChecks) {
 	r.Options("/*", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = w.Write([]byte("ok"))
-	})
+	r.Method(http.MethodGet, "/health", HealthHandler(checks, DefaultHealthTimeout))
 
 	r.Handle("/metrics", promhttp.Handler())
 }

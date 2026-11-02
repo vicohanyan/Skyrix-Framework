@@ -2,56 +2,44 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"gitlab.com/skyrix-lib/framework/engine"
-	"gitlab.com/skyrix-lib/framework/extensions/tenant/entity"
-	"gitlab.com/skyrix-lib/framework/extensions/tenant/repository"
-	"gitlab.com/skyrix-lib/framework/logging"
 	"strings"
 	"sync"
-	"time"
+
+	"gitlab.com/skyrix-lib/framework/extensions/tenant/entity"
+	"gitlab.com/skyrix-lib/framework/extensions/tenant/repository"
+	"gitlab.com/skyrix-lib/framework/logger"
 )
+
+// Cache is the shared (L2) tenant cache, implemented by cache.RedisCache.
+// A miss returns ok == false and no error.
+type Cache interface {
+	ByNamespace(ctx context.Context, namespace string) (t *entity.Tenant, ok bool, err error)
+	ByDomain(ctx context.Context, domain string) (t *entity.Tenant, ok bool, err error)
+	Put(ctx context.Context, t *entity.Tenant) error
+}
 
 type TenantService struct {
 	Log         logger.Interface
 	Repo        *repository.TenantRepository
-	Cache       engine.Cache
-	ttl         time.Duration
-	KeyPrefix   string
+	Cache       Cache
 	mu          sync.RWMutex
 	byNamespace map[string]*entity.Tenant
 	byDomain    map[string]*entity.Tenant
 }
 
-type CacheOpts struct {
-	TTL       time.Duration
-	KeyPrefix string // needed to form keys
-}
-
+// NewTenantService returns the tenant service. cache may be nil to use only
+// the in-memory cache and the repository.
 func NewTenantService(
 	log logger.Interface,
 	repo *repository.TenantRepository,
-	cache engine.Cache,
-	opts CacheOpts,
+	cache Cache,
 ) *TenantService {
-	ttl := opts.TTL
-	if ttl <= 0 {
-		ttl = 3 * time.Minute
-	}
-
-	prefix := strings.TrimSuffix(strings.TrimSpace(opts.KeyPrefix), ":")
-	if prefix == "" {
-		prefix = "skyrix-payment"
-	}
-
 	return &TenantService{
 		Log:         log,
 		Repo:        repo,
 		Cache:       cache,
-		ttl:         ttl,
-		KeyPrefix:   prefix,
 		byNamespace: make(map[string]*entity.Tenant),
 		byDomain:    make(map[string]*entity.Tenant),
 	}
@@ -60,13 +48,6 @@ func NewTenantService(
 var ErrNotFound = errors.New("tenant not found")
 
 func norm(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
-
-func (s *TenantService) redisKeyNamespace(namespace string) string {
-	return s.KeyPrefix + ":tenant:namespace:" + norm(namespace)
-}
-func (s *TenantService) redisKeyDomain(d string) string {
-	return s.KeyPrefix + ":tenant:domain:" + norm(d)
-}
 
 func (s *TenantService) isActive(t *entity.Tenant) bool {
 	return t != nil && t.IsActive
@@ -93,21 +74,6 @@ func (s *TenantService) nsVal(t *entity.Tenant) string {
 	return norm(t.Namespace)
 }
 
-func encodeTenant(t *entity.Tenant) ([]byte, error) {
-	return json.Marshal(t)
-}
-
-func decodeTenant(b []byte) (*entity.Tenant, error) {
-	if len(b) == 0 {
-		return nil, nil
-	}
-	var t entity.Tenant
-	if err := json.Unmarshal(b, &t); err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-
 // updateL1Cache populates the in-memory cache with the given tenant.
 func (s *TenantService) updateL1Cache(t *entity.Tenant) {
 	if t == nil {
@@ -124,27 +90,13 @@ func (s *TenantService) updateL1Cache(t *entity.Tenant) {
 	}
 }
 
-// updateL2Cache populates the Redis cache with the given tenant.
+// updateL2Cache populates the shared cache with the given tenant.
 func (s *TenantService) updateL2Cache(ctx context.Context, t *entity.Tenant) {
 	if s.Cache == nil || t == nil {
 		return
 	}
-
-	data, err := encodeTenant(t)
-	if err != nil {
-		s.Log.Error("failed to encode tenant for cache", "namespace", s.nsVal(t), "error", err)
-		return
-	}
-
-	if ns := s.nsVal(t); ns != "" {
-		if err := s.Cache.Set(ctx, s.redisKeyNamespace(ns), data, s.ttl); err != nil {
-			s.Log.Warn("failed to set tenant in cache by namespace", "namespace", ns, "error", err)
-		}
-	}
-	if d := s.domainVal(t); d != "" {
-		if err := s.Cache.Set(ctx, s.redisKeyDomain(d), data, s.ttl); err != nil {
-			s.Log.Warn("failed to set tenant in cache by domain", "domain", d, "error", err)
-		}
+	if err := s.Cache.Put(ctx, t); err != nil {
+		s.Log.Warn("failed to set tenant in cache", "namespace", s.nsVal(t), "domain", s.domainVal(t), "error", err)
 	}
 }
 
@@ -162,16 +114,14 @@ func (s *TenantService) GetByNamespace(ctx context.Context, namespace string) (*
 	}
 	s.mu.RUnlock()
 
-	// Redis
+	// L2 (shared cache)
 	if s.Cache != nil {
-		key := s.redisKeyNamespace(namespace)
-		if b, ok, err := s.Cache.Get(ctx, key); err == nil && ok {
-			if t, err := decodeTenant(b); err == nil && s.isActive(t) && s.schemaVal(t) != "" {
-				s.updateL1Cache(t)
-				return t, nil
-			} else if err != nil {
-				s.Log.Warn("failed to decode tenant from cache", "key", key, "error", err)
-			}
+		t, ok, err := s.Cache.ByNamespace(ctx, namespace)
+		if err != nil {
+			s.Log.Warn("failed to read tenant from cache", "namespace", namespace, "error", err)
+		} else if ok && s.isActive(t) && s.schemaVal(t) != "" {
+			s.updateL1Cache(t)
+			return t, nil
 		}
 	}
 
@@ -205,16 +155,14 @@ func (s *TenantService) GetByDomain(ctx context.Context, domain string) (*entity
 	}
 	s.mu.RUnlock()
 
-	// Redis
+	// L2 (shared cache)
 	if s.Cache != nil {
-		key := s.redisKeyDomain(domain)
-		if b, ok, err := s.Cache.Get(ctx, key); err == nil && ok {
-			if t, err := decodeTenant(b); err == nil && s.isActive(t) && s.schemaVal(t) != "" {
-				s.updateL1Cache(t)
-				return t, nil
-			} else if err != nil {
-				s.Log.Warn("failed to decode tenant from cache", "key", key, "error", err)
-			}
+		t, ok, err := s.Cache.ByDomain(ctx, domain)
+		if err != nil {
+			s.Log.Warn("failed to read tenant from cache", "domain", domain, "error", err)
+		} else if ok && s.isActive(t) && s.schemaVal(t) != "" {
+			s.updateL1Cache(t)
+			return t, nil
 		}
 	}
 

@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"gitlab.com/skyrix-lib/framework/logging"
+	"gitlab.com/skyrix-lib/framework/logger"
 	"gitlab.com/skyrix-lib/framework/validation"
 
 	chimw "github.com/go-chi/chi/v5/middleware"

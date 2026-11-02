@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"gitlab.com/skyrix-lib/framework/kernel"
-	"gitlab.com/skyrix-lib/framework/logging"
+	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 // Host runs an http.Server as a kernel.Component. Start binds the listener
