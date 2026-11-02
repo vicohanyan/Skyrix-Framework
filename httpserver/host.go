@@ -1,6 +1,8 @@
 package httpserver
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"context"
 	"errors"
 	"fmt"
@@ -8,7 +10,6 @@ import (
 	"net/http"
 
 	"gitlab.com/skyrix-lib/framework/kernel"
-	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 // Host runs an http.Server as a kernel.Component. Start binds the listener

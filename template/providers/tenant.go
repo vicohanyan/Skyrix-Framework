@@ -43,6 +43,9 @@ var MiddlewareSet = wire.NewSet(
 // ProvideTenantCache returns the Redis tenant cache under the
 // <REDIS_KEY_PREFIX>:tenant namespace.
 func ProvideTenantCache(client *redis.Client, keys engineredis.Keyspace, cfg *config.Config) (*tenantcache.RedisCache, error) {
+	if err := cfg.LoadSection("tenant", []string{"TENANT_CACHE"}, &cfg.TenantCache); err != nil {
+		return nil, err
+	}
 	return tenantcache.NewRedisCache(client, keys, tenantcache.Options{TTL: cfg.TenantCache.TTL})
 }
 

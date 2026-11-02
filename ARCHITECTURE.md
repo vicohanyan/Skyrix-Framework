@@ -121,7 +121,7 @@ connects it as a platform module (see [Platform modules](#platform-modules)).
 
 ### support packages
 
-`logger` (the `logger.Interface` used everywhere, slog-based),
+`logger` (`logger.Interface`, with independent slog-backed instances and owner-managed file cleanup),
 `validation` (go-playground validator), `scaffold` and `scaffold/makecmd`
 (`make domain|repository|service|migration`), `cmd/platformgen` (generator of
 the platform composition), `internal/depcheck` (dependency tests).

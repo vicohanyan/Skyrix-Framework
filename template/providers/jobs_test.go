@@ -1,6 +1,8 @@
 package providers
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"testing"
 
 	engineJobs "gitlab.com/skyrix-lib/framework/engine/jobs"
@@ -28,3 +30,5 @@ func (noopProviderLogger) Error(msg string, keysAndValues ...interface{}) {}
 func (noopProviderLogger) Info(msg string, keysAndValues ...interface{})  {}
 func (noopProviderLogger) Debug(msg string, keysAndValues ...interface{}) {}
 func (noopProviderLogger) Warn(msg string, keysAndValues ...interface{})  {}
+
+func (noopProviderLogger) With(...interface{}) logger.Interface { return noopProviderLogger{} }

@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"context"
 	"net/http"
 	"net/url"
@@ -9,8 +11,6 @@ import (
 	"time"
 
 	"gitlab.com/skyrix-lib/framework/extensions/tenant/repository"
-
-	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 type AllowedDomain struct {

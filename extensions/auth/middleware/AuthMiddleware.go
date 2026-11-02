@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"net/http"
 	"slices"
 	"strings"
@@ -8,7 +10,6 @@ import (
 	authcontext "gitlab.com/skyrix-lib/framework/extensions/auth/context"
 	"gitlab.com/skyrix-lib/framework/extensions/auth/security"
 	"gitlab.com/skyrix-lib/framework/extensions/auth/service"
-	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 // Options configures AuthMiddleware.

@@ -1,6 +1,8 @@
 package service
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -185,3 +187,5 @@ func (noopJWTLogger) Error(msg string, keysAndValues ...interface{}) {}
 func (noopJWTLogger) Info(msg string, keysAndValues ...interface{})  {}
 func (noopJWTLogger) Debug(msg string, keysAndValues ...interface{}) {}
 func (noopJWTLogger) Warn(msg string, keysAndValues ...interface{})  {}
+
+func (noopJWTLogger) With(...interface{}) logger.Interface { return noopJWTLogger{} }

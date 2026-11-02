@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"errors"
 	"net/http"
 	"strings"
@@ -10,7 +12,6 @@ import (
 
 	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
 	"gitlab.com/skyrix-lib/framework/engine/scope"
-	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 type TenantMiddleware struct {

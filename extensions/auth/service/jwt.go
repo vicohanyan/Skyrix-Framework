@@ -1,6 +1,8 @@
 package service
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"context"
 	"crypto/rsa"
 	"errors"
@@ -8,7 +10,6 @@ import (
 
 	"gitlab.com/skyrix-lib/framework/extensions/auth/contracts"
 	"gitlab.com/skyrix-lib/framework/extensions/auth/security"
-	"gitlab.com/skyrix-lib/framework/logger"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -29,7 +30,7 @@ type JWTService struct {
 func NewJWTService(logger logger.Interface, cfg *Config, blacklist contracts.TokenBlacklist, sessions contracts.SessionStore) *JWTService {
 	privateKey, publicKey, err := loadKeys(cfg.PrivateKeyPath, cfg.PublicKeyPath)
 	if err != nil {
-		logger.Error("Failed to load JWT keys", err)
+		logger.Error("Failed to load JWT keys", "error", err)
 		panic("JWTService critical error: " + err.Error())
 	}
 	return &JWTService{

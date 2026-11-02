@@ -29,24 +29,35 @@ func buildHTTPApp() (*httpApp, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	database := providers.ProvideDatabaseConfig(config)
-	postgresConfig := providers.ProvidePostgresOptions(database)
-	loggerInterface := providers.ProvideLogger(config)
-	db, cleanup, err := gormdb.Provide(postgresConfig, loggerInterface)
+	database, err := providers.ProvideDatabaseConfig(config)
 	if err != nil {
+		return nil, nil, err
+	}
+	postgresConfig := providers.ProvidePostgresOptions(database)
+	loggerInterface, cleanup := providers.ProvideLogger(config)
+	db, cleanup2, err := gormdb.Provide(postgresConfig, loggerInterface)
+	if err != nil {
+		cleanup()
 		return nil, nil, err
 	}
 	component, err := gormdb.NewComponent(db)
 	if err != nil {
+		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
 	platform, err := providers.ProvidePlatform()
 	if err != nil {
+		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
-	httpServer := providers.ProvideHttpServerConfig(config)
+	httpServer, err := providers.ProvideHttpServerConfig(config)
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	manyRequestsMiddleware := middleware.NewManyRequestsMiddleware()
 	recoverMiddleware := middleware2.NewRecoverMiddleware(loggerInterface)
 	gzipDecompressMiddleware := middleware2.NewGzipDecompressMiddleware(loggerInterface)
@@ -55,14 +66,20 @@ func buildHTTPApp() (*httpApp, func(), error) {
 		Recover:        recoverMiddleware,
 		GzipDecompress: gzipDecompressMiddleware,
 	}
-	serviceConfig := providers.ProvideJWTConfig(config)
+	serviceConfig, err := providers.ProvideJWTConfig(config)
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	jwtService := service.NewJWTVerifier(loggerInterface, serviceConfig)
 	options := middleware3.OptionsFromConfig(serviceConfig)
 	authMiddleware := middleware3.NewAuthMiddleware(jwtService, loggerInterface, options)
 	noopTenantMiddleware := router.NewNoopTenantMiddleware()
 	validator := validation.NewValidator()
-	gormdbDatabase, err := providers.ProvideDatabaseService(db, config)
+	gormdbDatabase, err := providers.ProvideDatabaseService(db, database)
 	if err != nil {
+		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
@@ -80,6 +97,7 @@ func buildHTTPApp() (*httpApp, func(), error) {
 	host := httpserver.NewHost(server, loggerInterface)
 	mainHttpApp := newHTTPApp(component, platform, host, loggerInterface)
 	return mainHttpApp, func() {
+		cleanup2()
 		cleanup()
 	}, nil
 }

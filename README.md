@@ -68,7 +68,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	log := logger.NewLogger(logger.Config{LogOutput: "stdout", LogType: "text", LogLevel: "info"})
+	log, cleanup := logger.NewLogger(logger.Config{LogOutput: "stdout", LogType: "text", LogLevel: "info"})
+
+	defer cleanup()
 
 	// PostgreSQL through GORM; the component pings on start and closes on stop.
 	db, err := gormdb.Open(postgres.Config{
@@ -120,3 +122,104 @@ go build ./... && go vet ./... && go test -count=1 ./...
 the import graph with `go list`. Tests against real servers run when
 `SKYRIX_TEST_POSTGRES_DSN` or `SKYRIX_TEST_REDIS_ADDR` is set. The template
 is a separate module in `template/`; the repository `go.work` includes both.
+
+## Section configuration
+
+`framework/config` has no engine, extension, host or Template dependencies.
+Consumers own structs and defaults; composition explicitly supplies sections:
+
+```go
+type EventBusConfig struct {
+    Enabled bool          `yaml:"enabled"`
+    Timeout time.Duration `yaml:"timeout"`
+    Servers []string      `yaml:"servers"`
+    Credentials struct {
+        Password string `yaml:"password" secret:"true"`
+    } `yaml:"credentials"`
+}
+func (c *EventBusConfig) Validate() error {
+    if c.Enabled && len(c.Servers) == 0 {
+        return errors.New("servers required")
+    }
+    return nil
+}
+
+cfg := &EventBusConfig{Timeout: 5 * time.Second}
+loader, err := config.New(config.Section{Key: "platform.eventbus", Value: cfg})
+if err != nil { return err }
+if err := loader.Load(yamlReader, os.LookupEnv); err != nil { return err }
+// Use cfg in DI. Diagnostics must use loader.Safe(), never cfg or Section.Value.
+sections := loader.Sections() // keys, prefixes, YAML paths and fields
+fields := loader.Fields() // detached, value-free metadata: path, env, type, secret
+safeValues := loader.Safe() // detached tree; working values remain unchanged
+```
+
+```yaml
+platform:
+  eventbus:
+    enabled: true
+    timeout: 2s
+    servers: ["nats://localhost:4222"]
+    credentials:
+      password: ""
+```
+
+Loading overlays the supplied struct defaults with present YAML fields, then
+present environment variables, including empty strings. It never treats false,
+zero, an empty string or an empty list as an absent value. Every selected section
+is loaded before its `Validate() error` is called. Unselected sections are neither
+decoded nor validated; configuration loading opens no infrastructure connections.
+A failed load can partially change targets: discard the targets on error. Create
+fresh consumer-owned targets for independent configurations; do not share mutable
+default slices between them. Loader and targets are not safe for concurrent mutation.
+
+Naming rules are deliberately mechanical:
+
+- Keys match `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*`. YAML traverses the dotted key.
+- Fields use an explicit `yaml` name, or the entire Go field name lowercased
+  (`ReadTimeout` becomes `readtimeout`). Prefer explicit snake_case YAML tags.
+  Names match `[A-Za-z][A-Za-z0-9_]*`; `yaml:"-"` excludes a field. Unexported
+  fields are ignored. YAML tag options (including inline) are unsupported.
+- Nested structs add a dot-separated field component. Env names uppercase the
+  full key and field path, replacing dots with underscores. Thus
+  `platform.eventbus.credentials.password` maps to
+  `PLATFORM_EVENTBUS_CREDENTIALS_PASSWORD`; the section prefix is
+  `PLATFORM_EVENTBUS_`. No acronym or camel-case splitting is performed.
+- Duplicate/ancestor section keys, duplicate YAML field names, and collisions
+  after env normalization are errors, including `a_b` versus nested `a.b`.
+  Selected YAML mappings reject duplicate keys. Unknown fields and unselected
+  sections are ignored, allowing a shared application YAML file.
+- Scalars support strings, booleans, signed/unsigned integers, floating-point
+  numbers and `time.Duration`; structs nest and lists contain supported scalars
+  or lists. Env strings are literal; other env values use YAML scalar/list syntax,
+  e.g. `PLATFORM_EVENTBUS_SERVERS='["nats://one", "nats://two"]'`.
+  Duration env values use Go duration syntax (`500ms`, `2s`). YAML supports duration
+  strings too. Pointers, maps, lists of structs, nulls and aliases are unsupported.
+  Supply one YAML document; `Load(nil, lookup)` uses defaults and env only.
+- `secret:"true"` masks the entire field, including nested structs and lists.
+  `Safe()` also masks secret descendants. Conversion errors contain canonical
+  parameter paths but suppress values and decoder details. Validation errors
+  report the section key and suppress the validator's error text (and cause),
+  since even an unmarked validator error can embed credentials. Validators must
+  not log raw configuration themselves. Raw structs remain working values and
+  must never be sent to diagnostics.
+
+Template keeps its existing uppercase YAML layout and unprefixed env names:
+`APP_ENV`, `LOGGER.LOG_OUTPUT`, `DATABASE.DB_PASS`, `JWT.JWT_ALLOWED_ROLES`, etc.
+There is no settings-file migration. Its compatibility adapter uses Section's
+explicit `YAMLPath` and `LegacyEnv`: explicit `env` tags override derived names,
+`env-default` tags are applied before YAML, and string-list env values retain the
+legacy comma-separated format (whitespace trimmed, empty env means empty list).
+New sections should use derived names and initialized Go defaults instead.
+`YAMLPath: nil` follows the key; an empty non-nil path selects the document root.
+Env collisions are checked across the explicit composition, including overrides.
+
+`LoadConfig` now loads application identity and logger only. Wire section providers
+load HTTP/Postgres/Auth/Redis/Tenant only when used by the binary; migration
+settings explicitly select Postgres. Adding a section requires an explicit typed
+provider that loads and returns its consumer-owned configuration; this needs no
+network provider. ConfigSet alone does not enable infrastructure. Existing
+`config=Field` platformgen generation is unchanged; future driver sections must
+be selected explicitly by their composition/provider until platformgen migration.
+No global registry, config:env command, driver manifest or platform management
+command is introduced.

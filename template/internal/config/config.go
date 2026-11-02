@@ -1,17 +1,20 @@
 package config
 
 import (
-	"fmt"
+	"bytes"
+	"errors"
+	"io"
 	"os"
 	"time"
 
 	authservice "gitlab.com/skyrix-lib/framework/extensions/auth/service"
 	logging "gitlab.com/skyrix-lib/framework/logger"
 
-	"github.com/ilyakaznacheev/cleanenv"
+	sections "gitlab.com/skyrix-lib/framework/config"
 )
 
 type Config struct {
+	source      []byte
 	Env         string `yaml:"APP_ENV" env:"APP_ENV"`
 	ServiceName string `yaml:"SERVICE_NAME" env:"SERVICE_NAME"`
 	// Version is the application version, recorded with applied migrations.
@@ -40,7 +43,7 @@ type Database struct {
 	Host       string `yaml:"DB_HOST" env:"DB_HOST"`
 	Port       int    `yaml:"DB_PORT" env:"DB_PORT"`
 	User       string `yaml:"DB_USER" env:"DB_USER"`
-	Pass       string `yaml:"DB_PASS" env:"DB_PASS"`
+	Pass       string `yaml:"DB_PASS" env:"DB_PASS" secret:"true"`
 	Name       string `yaml:"DB_NAME" env:"DB_NAME"`
 	MainSchema string `yaml:"DB_MAIN_SCHEMA" env:"DB_MAIN_SCHEMA"`
 }
@@ -52,7 +55,7 @@ type Database struct {
 type Redis struct {
 	Host      string `yaml:"REDIS_HOST" env:"REDIS_HOST"`
 	Port      int    `yaml:"REDIS_PORT" env:"REDIS_PORT"`
-	Pass      string `yaml:"REDIS_PASS" env:"REDIS_PASS"`
+	Pass      string `yaml:"REDIS_PASS" env:"REDIS_PASS" secret:"true"`
 	Db        int    `yaml:"REDIS_DB" env:"REDIS_DB"`
 	KeyPrefix string `yaml:"REDIS_KEY_PREFIX" env:"REDIS_KEY_PREFIX"`
 }
@@ -66,40 +69,50 @@ type TenantCache struct {
 	TTL time.Duration `yaml:"TENANT_CACHE_TTL" env:"TENANT_CACHE_TTL" env-default:"3m"`
 }
 
+// LoadConfig loads application identity and logger only. Infrastructure sections
+// are loaded by the providers actually used by a binary's Wire graph.
 func LoadConfig() (*Config, error) {
 	cfg := &Config{}
-
 	appEnv := os.Getenv("APP_ENV")
 	if appEnv == "" {
 		appEnv = "local"
 	}
-
-	configPaths := []string{
-		fmt.Sprintf("/config/%s.yaml", appEnv),
-		fmt.Sprintf("config/%s.yaml", appEnv),
-	}
-
-	var loaded bool
-	for _, path := range configPaths {
-		if _, err := os.Stat(path); err != nil {
+	for _, path := range []string{"/config/" + appEnv + ".yaml", "config/" + appEnv + ".yaml"} {
+		data, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
 			continue
 		}
-
-		if err := cleanenv.ReadConfig(path, cfg); err != nil {
-			return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
+		if err != nil {
+			return nil, errors.New("config: cannot read file")
 		}
-
-		loaded = true
+		cfg.source = data
 		break
 	}
-
-	if !loaded {
-		fmt.Printf("Warning: config file for APP_ENV=%s not found, falling back to environment variables\n", appEnv)
+	identity := struct {
+		Env         string `yaml:"APP_ENV" env:"APP_ENV"`
+		ServiceName string `yaml:"SERVICE_NAME" env:"SERVICE_NAME"`
+		Version     string `yaml:"APP_VERSION" env:"APP_VERSION"`
+	}{}
+	if err := cfg.LoadSection("app", []string{}, &identity); err != nil {
+		return nil, err
 	}
-
-	if err := cleanenv.ReadEnv(cfg); err != nil {
-		return nil, fmt.Errorf("failed to read environment variables: %w", err)
+	cfg.Env, cfg.ServiceName, cfg.Version = identity.Env, identity.ServiceName, identity.Version
+	if err := cfg.LoadSection("logger", []string{"LOGGER"}, &cfg.Logger); err != nil {
+		return nil, err
 	}
-
 	return cfg, nil
+}
+
+// LoadSection preserves legacy YAML paths and explicit env tags while sharing
+// the framework's loading, metadata and validation rules.
+func (cfg *Config) LoadSection(key string, path []string, target any) error {
+	loader, err := sections.New(sections.Section{Key: key, Value: target, YAMLPath: path, LegacyEnv: true})
+	if err != nil {
+		return err
+	}
+	var reader io.Reader
+	if len(cfg.source) > 0 {
+		reader = bytes.NewReader(cfg.source)
+	}
+	return loader.Load(reader, nil)
 }

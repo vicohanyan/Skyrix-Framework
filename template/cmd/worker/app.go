@@ -1,8 +1,9 @@
 package main
 
 import (
-	"gitlab.com/skyrix-lib/framework/kernel"
 	"gitlab.com/skyrix-lib/framework/logger"
+
+	"gitlab.com/skyrix-lib/framework/kernel"
 )
 
 // workerApp is the background binary: no HTTP, only platform modules and

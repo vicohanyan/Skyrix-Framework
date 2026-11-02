@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"errors"
 	"net/http"
 	"strconv"
@@ -8,8 +10,6 @@ import (
 	httphandler "gitlab.com/skyrix-lib/framework/httpserver/handler"
 
 	"github.com/go-chi/chi/v5"
-
-	"gitlab.com/skyrix-lib/framework/logger"
 	"gitlab.com/skyrix-lib/framework/validation"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/dto"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/interfaces"

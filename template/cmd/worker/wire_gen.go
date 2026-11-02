@@ -26,8 +26,9 @@ func buildWorkerApp() (*workerApp, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	loggerInterface := providers.ProvideLogger(config)
+	loggerInterface, cleanup := providers.ProvideLogger(config)
 	mainWorkerApp := newWorkerApp(platform, loggerInterface)
 	return mainWorkerApp, func() {
+		cleanup()
 	}, nil
 }

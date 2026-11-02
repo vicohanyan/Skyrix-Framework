@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 )
 
 // Config configures the framework logger.
@@ -19,40 +18,31 @@ type Config struct {
 	LogFile   string `yaml:"LOG_FILE" env:"LOG_FILE" env-default:""`
 }
 
+// Interface is the backend-independent structured logging contract.
+// With returns a derived logger without changing the receiver.
 type Interface interface {
 	Error(msg string, keysAndValues ...interface{})
 	Info(msg string, keysAndValues ...interface{})
 	Debug(msg string, keysAndValues ...interface{})
 	Warn(msg string, keysAndValues ...interface{})
+	With(keysAndValues ...interface{}) Interface
 }
 
-var (
-	loggerInstance Interface
-	loggerOnce     sync.Once
-)
-
-func NewLogger(cfg Config) Interface {
-	loggerOnce.Do(func() {
-		loggerInstance = setupLogger(cfg)
-	})
-
-	return loggerInstance
-}
-
-func setupLogger(cfg Config) Interface {
+// NewLogger creates an independent logger. The owner must call cleanup after
+// all consumers have stopped; cleanup closes only a file opened by this call.
+// Output failures retain the stdout fallback policy and emit a warning.
+func NewLogger(cfg Config) (Interface, func()) {
 	logLevelEnum := parseLogLevel(cfg.LogLevel)
 
-	output, err := getLogOutput(cfg.LogOutput, cfg.LogDir, cfg.LogFile)
+	output, cleanup, err := getLogOutput(cfg.LogOutput, cfg.LogDir, cfg.LogFile)
 
-	baseLogger := createLogger(cfg.LogType, output, logLevelEnum).With()
-
-	wrappedLogger := NewSlogWrapper(baseLogger)
+	baseLogger := createLogger(cfg.LogType, output, logLevelEnum)
 
 	if err != nil {
-		wrappedLogger.Warn("logger output fallback", "error", err)
+		baseLogger.Warn("logger output fallback", "error", err)
 	}
 
-	wrappedLogger.Info(
+	baseLogger.Info(
 		"logger initialized",
 		"level", cfg.LogLevel,
 		"format", cfg.LogType,
@@ -61,7 +51,7 @@ func setupLogger(cfg Config) Interface {
 		"file", cfg.LogFile,
 	)
 
-	return wrappedLogger
+	return NewSlogWrapper(baseLogger), cleanup
 }
 
 func parseLogLevel(logLevel string) slog.Level {
@@ -79,20 +69,21 @@ func parseLogLevel(logLevel string) slog.Level {
 	}
 }
 
-func getLogOutput(logOutput string, logDir string, logFile string) (io.Writer, error) {
+func getLogOutput(logOutput string, logDir string, logFile string) (io.Writer, func(), error) {
+	noop := func() {}
 	switch strings.ToLower(strings.TrimSpace(logOutput)) {
 	case "", "stdout", "std":
-		return os.Stdout, nil
+		return os.Stdout, noop, nil
 
 	case "stderr":
-		return os.Stderr, nil
+		return os.Stderr, noop, nil
 
 	case "file":
 		logFile = strings.TrimSpace(logFile)
 		logDir = strings.TrimSpace(logDir)
 
 		if logFile == "" {
-			return os.Stdout, fmt.Errorf("LOG_OUTPUT=file requires LOG_FILE, fallback to stdout")
+			return os.Stdout, noop, fmt.Errorf("LOG_OUTPUT=file requires LOG_FILE, fallback to stdout")
 		}
 
 		path := logFile
@@ -102,18 +93,18 @@ func getLogOutput(logOutput string, logDir string, logFile string) (io.Writer, e
 
 		dir := filepath.Dir(path)
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return os.Stdout, fmt.Errorf("failed to create log directory: %w", err)
+			return os.Stdout, noop, fmt.Errorf("failed to create log directory: %w", err)
 		}
 
 		output, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			return os.Stdout, fmt.Errorf("failed to open log file: %w", err)
+			return os.Stdout, noop, fmt.Errorf("failed to open log file: %w", err)
 		}
 
-		return output, nil
+		return output, func() { _ = output.Close() }, nil
 
 	default:
-		return os.Stdout, fmt.Errorf("unknown LOG_OUTPUT=%q, fallback to stdout", logOutput)
+		return os.Stdout, noop, fmt.Errorf("unknown LOG_OUTPUT=%q, fallback to stdout", logOutput)
 	}
 }
 

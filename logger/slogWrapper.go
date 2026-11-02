@@ -25,3 +25,10 @@ func (l *SlogWrapper) Debug(msg string, keysAndValues ...interface{}) {
 func (l *SlogWrapper) Warn(msg string, keysAndValues ...interface{}) {
 	l.logger.Warn(msg, keysAndValues...)
 }
+
+// With binds fields to a new logger and leaves the parent unchanged.
+func (l *SlogWrapper) With(keysAndValues ...interface{}) Interface {
+	return NewSlogWrapper(l.logger.With(keysAndValues...))
+}
+
+var _ Interface = (*SlogWrapper)(nil)

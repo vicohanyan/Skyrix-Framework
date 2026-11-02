@@ -38,8 +38,9 @@ var RedisSet = wire.NewSet(
 	engineredis.NewComponent,
 )
 
-func ProvideDatabaseConfig(cfg *config.Config) *config.Database {
-	return &cfg.Database
+func ProvideDatabaseConfig(cfg *config.Config) (*config.Database, error) {
+	err := cfg.LoadSection("database", []string{"DATABASE"}, &cfg.Database)
+	return &cfg.Database, err
 }
 
 func ProvidePostgresOptions(cfg *config.Database) enginepostgres.Config {
@@ -51,15 +52,16 @@ func ProvidePostgresOptions(cfg *config.Database) enginepostgres.Config {
 
 // ProvideDatabaseService registers the schema-routing plugin and returns the
 // schema-aware database.
-func ProvideDatabaseService(db *gorm.DB, cfg *config.Config) (*gormdb.Database, error) {
+func ProvideDatabaseService(db *gorm.DB, cfg *config.Database) (*gormdb.Database, error) {
 	if err := db.Use(&gormdb.Plugin{}); err != nil {
 		return nil, err
 	}
-	return gormdb.NewDatabase(db, cfg.Database.MainSchema), nil
+	return gormdb.NewDatabase(db, cfg.MainSchema), nil
 }
 
-func ProvideRedisConfig(cfg *config.Config) *config.Redis {
-	return &cfg.Redis
+func ProvideRedisConfig(cfg *config.Config) (*config.Redis, error) {
+	err := cfg.LoadSection("redis", []string{"REDIS"}, &cfg.Redis)
+	return &cfg.Redis, err
 }
 
 func ProvideRedisOptions(cfg *config.Redis) engineredis.Config {

@@ -7,11 +7,12 @@
 package gormdb
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"errors"
 	"fmt"
 
 	"gitlab.com/skyrix-lib/framework/engine/postgres"
-	"gitlab.com/skyrix-lib/framework/logger"
 
 	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"

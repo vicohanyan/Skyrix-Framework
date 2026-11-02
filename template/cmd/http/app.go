@@ -1,10 +1,11 @@
 package main
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	enginepostgres "gitlab.com/skyrix-lib/framework/engine/postgres"
 	"gitlab.com/skyrix-lib/framework/httpserver"
 	"gitlab.com/skyrix-lib/framework/kernel"
-	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 // httpApp is the HTTP binary run by one kernel runtime. Components start from

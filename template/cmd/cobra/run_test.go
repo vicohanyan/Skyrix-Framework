@@ -57,8 +57,15 @@ func TestHelpAndStandaloneDoNotConnect(t *testing.T) {
 // the application container cannot be built: the commands still succeed.
 func TestHelpAndStandaloneDoNotBuildContainer(t *testing.T) {
 	setConsoleEnv(t, "127.0.0.1:1", "127.0.0.1:1")
-	t.Setenv("DB_PORT", "not-a-port")
 	chdirToProject(t)
+	// The app graph loads no database section. Use a malformed selected
+	// document to prove help remains independent of configuration loading.
+	if err := os.Mkdir("config", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("config", "missing-environment.yaml"), []byte("LOGGER: ["), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := run(context.Background(), []string{"hello"}, &strings.Builder{}, &strings.Builder{}); err == nil {
 		t.Fatal("hello with an invalid configuration error = nil; the test needs a container that cannot be built")
@@ -151,4 +158,15 @@ func chdirToProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(dir)
+}
+
+func TestApplicationIgnoresDisabledSections(t *testing.T) {
+	setConsoleEnv(t, "127.0.0.1:1", "127.0.0.1:1")
+	chdirToProject(t)
+	for _, key := range []string{"DB_PORT", "REDIS_PORT", "JWT_EXPIRE", "TENANT_CACHE_TTL"} {
+		t.Setenv(key, "invalid-disabled-value")
+	}
+	if err := run(context.Background(), []string{"hello"}, &strings.Builder{}, &strings.Builder{}); err != nil {
+		t.Fatal(err)
+	}
 }

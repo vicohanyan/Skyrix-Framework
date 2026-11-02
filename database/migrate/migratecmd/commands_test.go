@@ -1,6 +1,7 @@
 package migratecmd
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -13,9 +14,9 @@ import (
 
 func TestCommandsValidateFlagsBeforeLoadingSettings(t *testing.T) {
 	loads := 0
-	commands := New(func() (Settings, error) {
+	commands := New(func() (Settings, func(), error) {
 		loads++
-		return Settings{}, errors.New("settings must not be loaded")
+		return Settings{}, nil, errors.New("settings must not be loaded")
 	}, fstest.MapFS{})
 
 	for _, test := range []struct {
@@ -73,5 +74,42 @@ func TestWriteStatusReportsDisagreement(t *testing.T) {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("status output does not contain %q:\n%s", want, output.String())
 		}
+	}
+}
+
+func TestSettingsCleanupOnOpenFailure(t *testing.T) {
+	calls := 0
+	commands := New(func() (Settings, func(), error) {
+		// Empty PostgreSQL config fails validation before any network access.
+		return Settings{}, func() { calls++ }, nil
+	}, fstest.MapFS{})
+	runner, cleanup, err := commands.Open(context.Background())
+	if err == nil || runner != nil || cleanup != nil {
+		t.Fatalf("Open() = %v, %v, %v", runner, cleanup != nil, err)
+	}
+	if calls != 1 {
+		t.Fatalf("cleanup calls = %d, want 1", calls)
+	}
+}
+
+func TestSettingsCleanupAfterAtlasEnvLookup(t *testing.T) {
+	for _, configured := range []string{"", "production"} {
+		t.Run(configured, func(t *testing.T) {
+			calls := 0
+			commands := New(func() (Settings, func(), error) {
+				return Settings{AtlasEnv: configured}, func() { calls++ }, nil
+			}, fstest.MapFS{})
+			env, err := commands.atlasEnv()
+			want := configured
+			if want == "" {
+				want = "local"
+			}
+			if err != nil || env != want {
+				t.Fatalf("atlasEnv() = %q, %v", env, err)
+			}
+			if calls != 1 {
+				t.Fatalf("cleanup calls = %d, want 1", calls)
+			}
+		})
 	}
 }

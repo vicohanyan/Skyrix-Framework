@@ -22,7 +22,32 @@ support v0.2.x.
 - `gitlab.com/skyrix-lib/eventbus` v1.1.0 or newer. EventBus v1.0.x is built on
   `google/wire`, ships no platform module, and does not work with this release.
 
+### Added
+
+- Consumer-owned `config.Section` and instance-local `config.Loader`: explicit
+  composition, defaults → YAML → env, validation, derived env metadata and
+  secret-safe diagnostic trees. Conversion/validation errors suppress values.
+  Dependency tests enforce isolation from engine, extensions, hosts and Template.
+- Template selects configuration sections through Wire providers. Disabled
+  Redis/Auth/Tenant/platform sections require no configuration; existing YAML
+  keys and env names remain supported. See README for naming, secrets, supported
+  types and compatibility rules. Logger DI and cleanup remain unchanged.
+
 ### Breaking changes
+
+- `logger.NewLogger(cfg)` now returns `(logger.Interface, func())` and creates
+  an independent instance on every call; the process-wide singleton is removed.
+  Consumers retain `logger.Interface`; `SlogWrapper` adapts the slog backend.
+  `Interface.With("key", value)` returns a derived logger for contextual fields;
+  custom implementations and test doubles must implement this method too.
+  Existing constructor calls must capture cleanup and run it after all consumers
+  stop. Template Wire graphs own cleanup on shutdown and graph construction
+  errors, allowing HTTP, Console and Worker configurations to remain independent.
+  Levels, JSON/text, output selection and stdout fallback are preserved;
+  cleanup closes owned files only. The migration runner retains its narrow
+  `migrate.Logger` contract. `migratecmd.SettingsLoader` now returns
+  `(Settings, func(), error)` with a non-nil cleanup on success, released on
+  connection/runner errors, command completion and Atlas env lookup.
 
 - The module path changed from `skyrix` to `gitlab.com/skyrix-lib/framework`.
   The framework is an importable library; the runnable application lives in the

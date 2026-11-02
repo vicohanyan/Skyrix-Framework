@@ -1,6 +1,8 @@
 package redis_test
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"context"
 	"crypto/tls"
 	"errors"
@@ -153,3 +155,5 @@ func (nopLogger) Error(string, ...interface{}) {}
 func (nopLogger) Info(string, ...interface{})  {}
 func (nopLogger) Debug(string, ...interface{}) {}
 func (nopLogger) Warn(string, ...interface{})  {}
+
+func (nopLogger) With(...interface{}) logger.Interface { return nopLogger{} }

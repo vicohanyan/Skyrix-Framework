@@ -1,11 +1,11 @@
 package jobs
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"context"
 	"fmt"
 	"time"
-
-	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 // ExecuteJob runs a job synchronously with retry/backoff and panic protection.
@@ -58,20 +58,23 @@ func ExecuteJobAsync(ctx context.Context, job Job, log logger.Interface, args ma
 		return
 	}
 
+	if log != nil {
+		log = log.With("job", job.Name())
+	}
 	go func() {
 		if log != nil {
-			log.Info("async job started", "job", job.Name())
+			log.Info("async job started")
 		}
 
 		if err := ExecuteJob(ctx, job, log, args); err != nil {
 			if log != nil {
-				log.Error("async job failed", "job", job.Name(), "error", err)
+				log.Error("async job failed", "error", err)
 			}
 			return
 		}
 
 		if log != nil {
-			log.Info("async job finished", "job", job.Name())
+			log.Info("async job finished")
 		}
 	}()
 }

@@ -3,6 +3,7 @@ module gitlab.com/skyrix-lib/framework
 go 1.27
 
 require (
+	go.yaml.in/yaml/v3 v3.0.5
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-playground/validator/v10 v10.30.5

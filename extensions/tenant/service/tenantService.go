@@ -1,6 +1,8 @@
 package service
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"context"
 	"errors"
 	"fmt"
@@ -9,7 +11,6 @@ import (
 
 	"gitlab.com/skyrix-lib/framework/extensions/tenant/entity"
 	"gitlab.com/skyrix-lib/framework/extensions/tenant/repository"
-	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 // Cache is the shared (L2) tenant cache, implemented by cache.RedisCache.

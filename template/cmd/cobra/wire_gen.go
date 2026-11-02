@@ -26,7 +26,7 @@ func buildApp() (*appGraph, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	loggerInterface := providers.ProvideLogger(config)
+	loggerInterface, cleanup := providers.ProvideLogger(config)
 	deps := &commands.Deps{
 		Config: config,
 		Logger: loggerInterface,
@@ -42,6 +42,7 @@ func buildApp() (*appGraph, func(), error) {
 		Jobs:     v,
 	}
 	return mainAppGraph, func() {
+		cleanup()
 	}, nil
 }
 
@@ -53,15 +54,20 @@ func buildDatabase() (*dbcmd.Deps, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	configDatabase := providers.ProvideDatabaseConfig(config)
-	postgresConfig := providers.ProvidePostgresOptions(configDatabase)
-	loggerInterface := providers.ProvideLogger(config)
-	db, cleanup, err := gormdb.Provide(postgresConfig, loggerInterface)
+	configDatabase, err := providers.ProvideDatabaseConfig(config)
 	if err != nil {
 		return nil, nil, err
 	}
-	gormdbDatabase, err := providers.ProvideDatabaseService(db, config)
+	postgresConfig := providers.ProvidePostgresOptions(configDatabase)
+	loggerInterface, cleanup := providers.ProvideLogger(config)
+	db, cleanup2, err := gormdb.Provide(postgresConfig, loggerInterface)
 	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	gormdbDatabase, err := providers.ProvideDatabaseService(db, configDatabase)
+	if err != nil {
+		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
@@ -69,6 +75,7 @@ func buildDatabase() (*dbcmd.Deps, func(), error) {
 	seeders := database.Seeders()
 	deps := dbcmd.NewDeps(gormdbDatabase, loggerInterface, models, seeders)
 	return deps, func() {
+		cleanup2()
 		cleanup()
 	}, nil
 }

@@ -8,6 +8,8 @@
 package dbcmd
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"context"
 	"errors"
 	"fmt"
@@ -15,7 +17,6 @@ import (
 	"gitlab.com/skyrix-lib/framework/cobra/console"
 	"gitlab.com/skyrix-lib/framework/database/migrate/migratecmd"
 	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
-	"gitlab.com/skyrix-lib/framework/logger"
 
 	"github.com/spf13/cobra"
 )

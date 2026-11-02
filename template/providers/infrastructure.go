@@ -21,7 +21,7 @@ func ProvideConfig() (*config.Config, error) {
 	return config.LoadConfig()
 }
 
-func ProvideLogger(cfg *config.Config) logger.Interface {
+func ProvideLogger(cfg *config.Config) (logger.Interface, func()) {
 	return logger.NewLogger(cfg.Logger)
 }
 
@@ -30,10 +30,12 @@ func ProvideLoggerConfig(cfg *config.Config) *config.Logger {
 	return &cfg.Logger
 }
 
-func ProvideHttpServerConfig(cfg *config.Config) *config.HttpServer {
-	return &cfg.HttpServer
+func ProvideHttpServerConfig(cfg *config.Config) (*config.HttpServer, error) {
+	err := cfg.LoadSection("http", []string{"HTTP_SERVER"}, &cfg.HttpServer)
+	return &cfg.HttpServer, err
 }
 
-func ProvideJWTConfig(cfg *config.Config) *config.JWT {
-	return &cfg.JWT
+func ProvideJWTConfig(cfg *config.Config) (*config.JWT, error) {
+	err := cfg.LoadSection("auth", []string{"JWT"}, &cfg.JWT)
+	return &cfg.JWT, err
 }

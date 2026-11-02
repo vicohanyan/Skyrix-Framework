@@ -8,14 +8,14 @@
 package redis
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"strings"
 	"time"
-
-	logger "gitlab.com/skyrix-lib/framework/logger"
 
 	goredis "github.com/redis/go-redis/v9"
 )

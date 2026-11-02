@@ -1,11 +1,11 @@
 package middleware
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"net/http"
 	"runtime/debug"
 	"strings"
-
-	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 type RecoverMiddleware struct {

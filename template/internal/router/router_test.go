@@ -1,6 +1,8 @@
 package router
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -108,3 +110,5 @@ func (noopLogger) Error(string, ...interface{}) {}
 func (noopLogger) Info(string, ...interface{})  {}
 func (noopLogger) Debug(string, ...interface{}) {}
 func (noopLogger) Warn(string, ...interface{})  {}
+
+func (noopLogger) With(...interface{}) logger.Interface { return noopLogger{} }

@@ -1,10 +1,11 @@
 package service
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"errors"
 
 	"gitlab.com/skyrix-lib/framework/extensions/auth/security"
-	"gitlab.com/skyrix-lib/framework/logger"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -15,7 +16,7 @@ var ErrMissingUserIDClaim = errors.New("missing user_id claim")
 func NewJWTVerifier(logger logger.Interface, cfg *Config) *JWTService {
 	publicKey, err := loadPublicKey(cfg.PublicKeyPath)
 	if err != nil {
-		logger.Error("Failed to load JWT public key", err)
+		logger.Error("Failed to load JWT public key", "error", err)
 		panic("JWT verifier critical error: " + err.Error())
 	}
 	return &JWTService{

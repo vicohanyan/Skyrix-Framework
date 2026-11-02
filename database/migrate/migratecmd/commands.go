@@ -7,6 +7,8 @@
 package migratecmd
 
 import (
+	"gitlab.com/skyrix-lib/framework/logger"
+
 	"context"
 	"errors"
 	"fmt"
@@ -19,7 +21,6 @@ import (
 	"gitlab.com/skyrix-lib/framework/database/migrate"
 	"gitlab.com/skyrix-lib/framework/database/migrate/atlas"
 	"gitlab.com/skyrix-lib/framework/engine/postgres"
-	"gitlab.com/skyrix-lib/framework/logger"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -37,8 +38,9 @@ type Settings struct {
 	AtlasEnv string
 }
 
-// SettingsLoader loads the settings when a command runs.
-type SettingsLoader func() (Settings, error)
+// SettingsLoader loads settings when a command runs. On success it returns a
+// non-nil cleanup that releases resources after the command finishes.
+type SettingsLoader func() (Settings, func(), error)
 
 // Commands are the SQL migration commands of an application.
 type Commands struct {
@@ -80,14 +82,15 @@ func (c *Commands) Command() *console.Command {
 }
 
 // Open loads the settings, connects to PostgreSQL and returns a runner for the
-// migrations together with a function that closes the connection.
+// migrations together with a function that closes the connection and settings resources.
 func (c *Commands) Open(ctx context.Context, options ...migrate.Option) (*migrate.Runner, func(), error) {
-	settings, err := c.LoadSettings()
+	settings, cleanup, err := c.LoadSettings()
 	if err != nil {
 		return nil, nil, err
 	}
 	db, err := postgres.OpenSQL(ctx, settings.Postgres)
 	if err != nil {
+		cleanup()
 		return nil, nil, fmt.Errorf("connect to postgres: %w", err)
 	}
 
@@ -100,16 +103,21 @@ func (c *Commands) Open(ctx context.Context, options ...migrate.Option) (*migrat
 	runner, err := migrate.NewRunner(db, c.Source, all...)
 	if err != nil {
 		_ = db.Close()
+		cleanup()
 		return nil, nil, err
 	}
-	return runner, func() { _ = db.Close() }, nil
+	return runner, func() {
+		_ = db.Close()
+		cleanup()
+	}, nil
 }
 
 func (c *Commands) atlasEnv() (string, error) {
-	settings, err := c.LoadSettings()
+	settings, cleanup, err := c.LoadSettings()
 	if err != nil {
 		return "", err
 	}
+	defer cleanup()
 	if settings.AtlasEnv == "" {
 		return "local", nil
 	}

@@ -12,17 +12,22 @@ import (
 // ProvideMigrationSettings defers configuration loading until a migration
 // command runs, so building the commands and showing help need no config.
 func ProvideMigrationSettings() migratecmd.SettingsLoader {
-	return func() (migratecmd.Settings, error) {
+	return func() (migratecmd.Settings, func(), error) {
 		cfg, err := config.LoadConfig()
 		if err != nil {
-			return migratecmd.Settings{}, err
+			return migratecmd.Settings{}, nil, err
 		}
+		database, err := ProvideDatabaseConfig(cfg)
+		if err != nil {
+			return migratecmd.Settings{}, nil, err
+		}
+		log, cleanup := logger.NewLogger(cfg.Logger)
 		return migratecmd.Settings{
-			Postgres:   ProvidePostgresOptions(&cfg.Database),
+			Postgres:   ProvidePostgresOptions(database),
 			AppVersion: cfg.Version,
-			Logger:     logger.NewLogger(cfg.Logger),
+			Logger:     log,
 			AtlasEnv:   cfg.Env,
-		}, nil
+		}, cleanup, nil
 	}
 }
 

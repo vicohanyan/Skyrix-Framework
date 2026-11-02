@@ -7,8 +7,9 @@
 package commands
 
 import (
-	"gitlab.com/skyrix-lib/framework/cobra/console"
 	"gitlab.com/skyrix-lib/framework/logger"
+
+	"gitlab.com/skyrix-lib/framework/cobra/console"
 	"gitlab.com/skyrix-lib/template/internal/config"
 
 	"github.com/goforj/wire"
