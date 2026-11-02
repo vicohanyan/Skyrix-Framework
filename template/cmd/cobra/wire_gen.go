@@ -7,17 +7,19 @@
 package main
 
 import (
+	"gitlab.com/skyrix-lib/eventbus"
+	"gitlab.com/skyrix-lib/eventbus/platform"
 	"gitlab.com/skyrix-lib/framework/cobra"
-	"gitlab.com/skyrix-lib/framework/cobra/eventbus"
-	"gitlab.com/skyrix-lib/framework/kernel"
-	"gitlab.com/skyrix-lib/framework/kernel/jobs"
+	"gitlab.com/skyrix-lib/framework/database/migrate/migratecmd"
+	"gitlab.com/skyrix-lib/framework/engine"
+	"gitlab.com/skyrix-lib/framework/engine/jobs"
+	"gitlab.com/skyrix-lib/framework/engine/jobs/jobscmd"
+	"gitlab.com/skyrix-lib/framework/scaffold/makecmd"
 	"gitlab.com/skyrix-lib/template/internal/commands"
 	"gitlab.com/skyrix-lib/template/internal/database"
 	jobs2 "gitlab.com/skyrix-lib/template/internal/jobs"
 	"gitlab.com/skyrix-lib/template/internal/scaffold"
 	"gitlab.com/skyrix-lib/template/internal/scaffold/db"
-	"gitlab.com/skyrix-lib/template/internal/scaffold/job"
-	make2 "gitlab.com/skyrix-lib/template/internal/scaffold/make"
 	"gitlab.com/skyrix-lib/template/providers"
 )
 
@@ -29,9 +31,11 @@ func buildConsoleApp() (*cobra.ConsoleApp, func(), error) {
 		return nil, nil, err
 	}
 	loggerInterface := providers.ProvideLogger(config)
+	helloCommand := commands.NewHelloCommand()
+	commandsCommands := commands.NewCommands(helloCommand)
 	configDatabase := providers.ProvideDatabaseConfig(config)
 	postgresOptions := providers.ProvidePostgresOptions(configDatabase)
-	gormDB, cleanup, err := kernel.ProvidePostgres(postgresOptions, loggerInterface)
+	gormDB, cleanup, err := engine.ProvidePostgres(postgresOptions, loggerInterface)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -40,36 +44,53 @@ func buildConsoleApp() (*cobra.ConsoleApp, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	redis := providers.ProvideRedisConfig(config)
-	redisOptions := providers.ProvideRedisOptions(redis)
-	client, cleanup2, err := kernel.ProvideRedis(redisOptions, loggerInterface)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
-	}
-	engineRedis := providers.ProvideRedisService(client, loggerInterface, config)
-	registry := jobs.NewRegistry(loggerInterface)
-	systemPingJob := jobs2.NewSystemPingJob(loggerInterface)
-	providersJobs := &providers.Jobs{
-		SystemPingJob: systemPingJob,
-	}
-	jobsRegistry := providers.ProvideRegisteredJobsRegistry(registry, providersJobs)
-	kernelKernel := providers.ProvideKernel(config, loggerInterface, engineDatabase, engineRedis, jobsRegistry)
-	helloCommand := commands.NewHelloCommand()
-	commandsCommands := commands.NewCommands(helloCommand)
 	dbSeeder := database.NewDBSeeder(engineDatabase, loggerInterface)
 	dbMigrator := database.NewDBMigrator(engineDatabase, loggerInterface, dbSeeder)
 	dbAutoMigrateCommand := db.NewDBAutoMigrateCommand(dbMigrator)
 	dbSeedCommand := db.NewDBSeedCommand(dbSeeder)
-	dbCommand := db.NewDBCommand(dbAutoMigrateCommand, dbSeedCommand)
-	jobsRunCommand := job.NewJobsRunCommand(jobsRegistry)
-	eventBusCommand := eventbus.NewEventBusCommand()
-	makeCommand := make2.NewMakeCommand()
-	scaffoldCommands := scaffold.NewCommands(dbCommand, jobsRunCommand, eventBusCommand, makeCommand)
-	commandGroups := providers.ProvideCobraCommandGroups(commandsCommands, scaffoldCommands)
-	consoleApp := cobra.NewConsoleApp(kernelKernel, commandGroups)
+	settingsLoader := providers.ProvideMigrationSettings()
+	fs := providers.ProvideMigrationSource()
+	migratecmdCommands := migratecmd.New(settingsLoader, fs)
+	dbCommand := db.NewDBCommand(dbAutoMigrateCommand, dbSeedCommand, migratecmdCommands)
+	runtimeRegistry := jobs.NewRegistry(loggerInterface)
+	systemPingJob := jobs2.NewSystemPingJob(loggerInterface)
+	providersJobs := &providers.Jobs{
+		SystemPingJob: systemPingJob,
+	}
+	v := providers.ProvideRegisteredJobsRegistry(runtimeRegistry, providersJobs)
+	jobsRunCommand := jobscmd.NewJobsRunCommand(v)
+	makeCommand := makecmd.NewMakeCommand()
+	scaffoldCommands := scaffold.NewCommands(dbCommand, jobsRunCommand, makeCommand)
+	eventBus := &config.EventBus
+	v2 := platform.ProvideLogger(loggerInterface)
+	v3, cleanup2, err := eventbus.ProvideBus(eventBus, v2)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	runtime := platform.NewRuntime(v3)
+	module := platform.NewModule(runtime)
+	kernelPlatform, err := providers.ProvidePlatform(module)
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	commandGroups := providers.ProvideCobraCommandGroups(commandsCommands, scaffoldCommands, kernelPlatform)
+	consoleApp := cobra.NewConsoleApp(loggerInterface, commandGroups)
 	return consoleApp, func() {
 		cleanup2()
 		cleanup()
 	}, nil
+}
+
+// buildStandaloneCommands builds the commands that run without the application
+// container. Building them reads no configuration and opens no connection.
+func buildStandaloneCommands() *scaffold.StandaloneCommands {
+	settingsLoader := providers.ProvideMigrationSettings()
+	fs := providers.ProvideMigrationSource()
+	migratecmdCommands := migratecmd.New(settingsLoader, fs)
+	makeCommand := makecmd.NewMakeCommand()
+	standaloneCommands := scaffold.NewStandaloneCommands(migratecmdCommands, makeCommand)
+	return standaloneCommands
 }

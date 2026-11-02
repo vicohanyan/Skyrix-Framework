@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	httphandler "gitlab.com/skyrix-lib/framework/httpserver/handler"
 	"net/http"
 	"strconv"
 
@@ -14,13 +15,13 @@ import (
 )
 
 type ExampleTaskHandler struct {
-	*BaseHandler
+	*httphandler.BaseHandler
 	service interfaces.TaskService
 }
 
 func NewExampleTaskHandler(log logger.Interface, validator *validation.Validator, service interfaces.TaskService) *ExampleTaskHandler {
 	handler := &ExampleTaskHandler{
-		BaseHandler: &BaseHandler{Logger: log, Validator: validator},
+		BaseHandler: &httphandler.BaseHandler{Logger: log, Validator: validator},
 		service:     service,
 	}
 	handler.BaseHandler.WithAutoName(handler)
@@ -35,8 +36,8 @@ func NewExampleTaskHandler(log logger.Interface, validator *validation.Validator
 // @Produce json
 // @Param payload body dto.CreateTaskInput true "Task payload"
 // @Success 201 {object} dto.TaskResult
-// @Failure 400 {object} ErrorPayload
-// @Failure 500 {object} ErrorPayload
+// @Failure 400 {object} httphandler.ErrorPayload
+// @Failure 500 {object} httphandler.ErrorPayload
 // @Router /api/v1/examples/tasks/ [post]
 func (h *ExampleTaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var input dto.CreateTaskInput
@@ -44,8 +45,8 @@ func (h *ExampleTaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if details := h.MapValidationErrors(input); len(details) > 0 {
-		h.WriteJSON(w, http.StatusBadRequest, ErrorPayload{Error: ErrorBody{
-			Code: ErrCodeValidation, Message: "Validation failed", Details: details,
+		h.WriteJSON(w, http.StatusBadRequest, httphandler.ErrorPayload{Error: httphandler.ErrorBody{
+			Code: httphandler.ErrCodeValidation, Message: "Validation failed", Details: details,
 		}})
 		return
 	}
@@ -64,9 +65,9 @@ func (h *ExampleTaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 // @Produce json
 // @Param task_id path int true "Task ID" minimum(1)
 // @Success 200 {object} dto.TaskResult
-// @Failure 400 {object} ErrorPayload
-// @Failure 404 {object} ErrorPayload
-// @Failure 500 {object} ErrorPayload
+// @Failure 400 {object} httphandler.ErrorPayload
+// @Failure 404 {object} httphandler.ErrorPayload
+// @Failure 500 {object} httphandler.ErrorPayload
 // @Router /api/v1/examples/tasks/{task_id} [get]
 func (h *ExampleTaskHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.taskID(w, r)
@@ -88,7 +89,7 @@ func (h *ExampleTaskHandler) Get(w http.ResponseWriter, r *http.Request) {
 // @Produce json
 // @Param limit query int false "Maximum number of tasks" default(20) minimum(1) maximum(100)
 // @Success 200 {array} dto.TaskResult
-// @Failure 500 {object} ErrorPayload
+// @Failure 500 {object} httphandler.ErrorPayload
 // @Router /api/v1/examples/tasks/ [get]
 func (h *ExampleTaskHandler) List(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -107,10 +108,10 @@ func (h *ExampleTaskHandler) List(w http.ResponseWriter, r *http.Request) {
 // @Produce json
 // @Param task_id path int true "Task ID" minimum(1)
 // @Success 200 {object} dto.TaskResult
-// @Failure 400 {object} ErrorPayload
-// @Failure 404 {object} ErrorPayload
-// @Failure 409 {object} ErrorPayload
-// @Failure 500 {object} ErrorPayload
+// @Failure 400 {object} httphandler.ErrorPayload
+// @Failure 404 {object} httphandler.ErrorPayload
+// @Failure 409 {object} httphandler.ErrorPayload
+// @Failure 500 {object} httphandler.ErrorPayload
 // @Router /api/v1/examples/tasks/{task_id}/complete [patch]
 func (h *ExampleTaskHandler) Complete(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.taskID(w, r)

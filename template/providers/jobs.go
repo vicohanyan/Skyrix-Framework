@@ -2,7 +2,6 @@ package providers
 
 import (
 	engineJobs "gitlab.com/skyrix-lib/framework/engine/jobs"
-	kernelJobs "gitlab.com/skyrix-lib/framework/kernel/jobs"
 	"gitlab.com/skyrix-lib/template/internal/jobs"
 
 	"github.com/goforj/wire"
@@ -14,7 +13,7 @@ type Jobs struct {
 
 // ProvideRegisteredJobsRegistry registers all known jobs and returns the registry
 // through the interface used by the kernel, console command, and admin handlers.
-func ProvideRegisteredJobsRegistry(reg *kernelJobs.Registry, all *Jobs) engineJobs.Registry {
+func ProvideRegisteredJobsRegistry(reg *engineJobs.RuntimeRegistry, all *Jobs) engineJobs.Registry {
 	reg.Register(all.SystemPingJob)
 	return reg
 }
@@ -35,7 +34,7 @@ var JobProviderSet = wire.NewSet(
 	JobDomainDepsSet,
 
 	// runtime registry
-	kernelJobs.NewRegistry,
+	engineJobs.NewRegistry,
 
 	// concrete jobs
 	jobs.NewSystemPingJob,
@@ -48,7 +47,7 @@ var JobProviderSet = wire.NewSet(
 )
 
 var ConsoleJobProviderSet = wire.NewSet(
-	kernelJobs.NewRegistry,
+	engineJobs.NewRegistry,
 	jobs.NewSystemPingJob,
 	wire.Struct(new(Jobs), "*"),
 	ProvideRegisteredJobsRegistry,

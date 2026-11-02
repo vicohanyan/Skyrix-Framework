@@ -14,16 +14,17 @@ import (
 
 func buildConsoleApp() (*frameworkcobra.ConsoleApp, func(), error) {
 	wire.Build(
-		// 1) Bootstrap (config, logger, raw db/redis)
-		providers.InfrastructureSet,
+		// 1) Configuration and logger
+		providers.ConfigSet,
 
-		// 2) Engine (db/redis wrappers)
-		providers.EngineProviderSet,
+		// 2) Infrastructure used by the console
+		providers.PostgresSet,
 
-		// 3) Build the Kernel
-		providers.KernelProviderSet,
+		// 3) Compile-time platform modules
+		providers.PlatformSet,
 
 		// 4) Console layer
+		providers.MigrationSet,
 		providers.ConsoleJobProviderSet,
 		commands.ProviderSet,
 		scaffold.ProviderSet,
@@ -33,4 +34,14 @@ func buildConsoleApp() (*frameworkcobra.ConsoleApp, func(), error) {
 		frameworkcobra.NewConsoleApp,
 	)
 	return nil, nil, nil
+}
+
+// buildStandaloneCommands builds the commands that run without the application
+// container. Building them reads no configuration and opens no connection.
+func buildStandaloneCommands() *scaffold.StandaloneCommands {
+	wire.Build(
+		providers.MigrationSet,
+		scaffold.StandaloneProviderSet,
+	)
+	return nil
 }

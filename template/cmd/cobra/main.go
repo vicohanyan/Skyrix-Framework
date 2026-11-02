@@ -28,7 +28,7 @@ func main() {
 	defer cleanup()
 
 	if err := consoleApp.Execute(ctx); err != nil {
-		consoleApp.Kernel.Logger.Error("console command failed", "error", err)
+		consoleApp.Logger.Error("console command failed", "error", err)
 		os.Exit(1)
 	}
 }

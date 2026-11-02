@@ -18,7 +18,7 @@ type Config struct {
 	Database    `yaml:"DATABASE" env:"DATABASE"`
 	Redis       `yaml:"REDIS" env:"REDIS"`
 	JWT         `yaml:"JWT" env:"JWT"`
-	Queue       `yaml:"QUEUE" env:"QUEUE"`
+	EventBus    `yaml:"QUEUE" env:"QUEUE"`
 	OAuth       `yaml:"OAUTH" env:"OAUTH"`
 	TenantCache `yaml:"TENANT_CACHE" env:"TENANT_CACHE"`
 }
@@ -55,7 +55,7 @@ type JWT struct {
 	Audience       string `yaml:"JWT_AUDIENCE" env:"JWT_AUDIENCE"`
 }
 
-type Queue struct {
+type EventBus struct {
 	Enabled          bool          `yaml:"QUEUE_ENABLED"           env:"QUEUE_ENABLED"           env-default:"false"`
 	Host             string        `yaml:"QUEUE_HOST"              env:"QUEUE_HOST"              env-default:"nats"`
 	Port             int           `yaml:"QUEUE_PORT"              env:"QUEUE_PORT"              env-default:"4222"`
@@ -67,15 +67,17 @@ type Queue struct {
 	DLQPrefix        string        `yaml:"DLQ_PREFIX"              env:"DLQ_PREFIX"              env-default:"dlq."`
 }
 
-func (q *Queue) EventBusEnabled() bool             { return q != nil && q.Enabled }
-func (q *Queue) NATSHost() string                  { return q.Host }
-func (q *Queue) NATSPort() int                     { return q.Port }
-func (q *Queue) NATSUser() string                  { return q.User }
-func (q *Queue) NATSPassword() string              { return q.Pass }
-func (q *Queue) NATSConnectionName() string        { return q.ServiceName }
-func (q *Queue) NATSConnectTimeout() time.Duration { return q.RetryTimeout }
-func (q *Queue) NATSReconnectWait() time.Duration  { return q.ReconnectTimeout }
-func (q *Queue) NATSDefaultDLQPrefix() string      { return q.DLQPrefix }
+type Queue = EventBus
+
+func (q *EventBus) EventBusEnabled() bool             { return q != nil && q.Enabled }
+func (q *EventBus) NATSHost() string                  { return q.Host }
+func (q *EventBus) NATSPort() int                     { return q.Port }
+func (q *EventBus) NATSUser() string                  { return q.User }
+func (q *EventBus) NATSPassword() string              { return q.Pass }
+func (q *EventBus) NATSConnectionName() string        { return q.ServiceName }
+func (q *EventBus) NATSConnectTimeout() time.Duration { return q.RetryTimeout }
+func (q *EventBus) NATSReconnectWait() time.Duration  { return q.ReconnectTimeout }
+func (q *EventBus) NATSDefaultDLQPrefix() string      { return q.DLQPrefix }
 
 type OAuth struct {
 	GoogleClientID    string `yaml:"GOOGLE_CLIENT_ID" env:"OAUTH_GOOGLE_CLIENT_ID"`

@@ -2,6 +2,7 @@ package providers
 
 import (
 	frameworkcobra "gitlab.com/skyrix-lib/framework/cobra"
+	"gitlab.com/skyrix-lib/framework/kernel"
 	"gitlab.com/skyrix-lib/template/internal/commands"
 	"gitlab.com/skyrix-lib/template/internal/scaffold"
 
@@ -11,10 +12,11 @@ import (
 func ProvideCobraCommandGroups(
 	application *commands.Commands,
 	framework *scaffold.Commands,
+	platform *kernel.Platform,
 ) *frameworkcobra.CommandGroups {
 	return &frameworkcobra.CommandGroups{
 		Application: application.All,
-		Framework:   framework.All,
+		Framework:   append(frameworkcobra.ModuleCommands(platform.Modules()...), framework.All...),
 	}
 }
 

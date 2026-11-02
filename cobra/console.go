@@ -3,7 +3,7 @@ package cobra
 import (
 	"context"
 
-	"gitlab.com/skyrix-lib/framework/kernel"
+	"gitlab.com/skyrix-lib/framework/logging"
 
 	spfcobra "github.com/spf13/cobra"
 )
@@ -16,20 +16,20 @@ type CommandGroups struct {
 // ConsoleApp is the final runnable CLI application.
 // It wires the Kernel plus the Commands bundle and exposes a single Execute entrypoint.
 type ConsoleApp struct {
-	Kernel   *kernel.Kernel
+	Logger   logger.Interface
 	Commands []*spfcobra.Command
 	Scaffold []*spfcobra.Command
 }
 
 func NewConsoleApp(
-	applicationKernel *kernel.Kernel,
+	log logger.Interface,
 	groups *CommandGroups,
 ) *ConsoleApp {
 	if groups == nil {
 		groups = &CommandGroups{}
 	}
 	return &ConsoleApp{
-		Kernel:   applicationKernel,
+		Logger:   log,
 		Commands: groups.Application,
 		Scaffold: groups.Framework,
 	}
@@ -47,8 +47,7 @@ func (c *ConsoleApp) newRootCommand() *spfcobra.Command {
 	root := &spfcobra.Command{
 		Use:   "cobra",
 		Short: "Skyrix CLI console built with github.com/spf13/cobra",
-		Long: `Skyrix CLI console.
-This console is powered by the Cobra library (github.com/spf13/cobra).`,
+		Long:  `Skyrix CLI console. This console is powered by the Cobra library (github.com/spf13/cobra).`,
 	}
 
 	addApplicationCommands(root, c.Commands)

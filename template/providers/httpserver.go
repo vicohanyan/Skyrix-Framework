@@ -16,4 +16,5 @@ func ProvideHTTPServerOptions(cfg *config.HttpServer) httpserver.Options {
 var HTTPProviderSet = wire.NewSet(
 	ProvideHTTPServerOptions,
 	httpserver.NewServer,
+	httpserver.NewHost,
 )

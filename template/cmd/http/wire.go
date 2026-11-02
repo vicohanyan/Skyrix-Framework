@@ -4,7 +4,6 @@
 package main
 
 import (
-	"gitlab.com/skyrix-lib/framework/httpserver"
 	"gitlab.com/skyrix-lib/framework/validation"
 	"gitlab.com/skyrix-lib/template/internal/router"
 	"gitlab.com/skyrix-lib/template/providers"
@@ -12,35 +11,31 @@ import (
 	"github.com/goforj/wire"
 )
 
-func buildHTTPApp() (*httpserver.HTTPApp, func(), error) {
+func buildHTTPApp() (*httpApp, func(), error) {
 	wire.Build(
-		// 1. Microkernel bootstrap (config, logger, raw db/redis)
-		providers.InfrastructureSet,
+		// 1. Configuration and logger
+		providers.ConfigSet,
 
-		// 2. Engine (wrap raw db/redis → Database, Cache)
-		providers.EngineProviderSet,
+		// 2. Infrastructure used by this binary
+		providers.PostgresSet,
 
-		// 3. Build Kernel AFTER engine
-		providers.KernelProviderSet,
+		// 3. Compile-time platform modules
+		providers.PlatformSet,
 
-		// 4. Platform policies
-		providers.PlatformProviderSet,
-
-		// 5. Example domain
+		// 4. Example domain
 		providers.DomainProviderSet,
 
-		// 6. App layer
+		// 5. App layer
 		providers.HandlerProviderSet,
-		providers.JobProviderSet,
 		providers.GlobalMiddlewareProviderSet,
 
-		// 7. HTTP layer
+		// 6. HTTP layer
 		validation.NewValidator,
 		router.ProviderSet,
 		providers.HTTPProviderSet,
 
-		// 8. Final app
-		httpserver.NewHTTPApp,
+		// 7. Final app: platform components and the HTTP host in one runtime
+		newHTTPApp,
 	)
 	return nil, nil, nil
 }

@@ -1,32 +1,25 @@
+// Package kernel is the microkernel of the framework: transport- and
+// implementation-neutral contracts and the assembly of a binary (runtime,
+// module registry, run loop). It depends only on the standard library.
 package kernel
 
-import (
-	"gitlab.com/skyrix-lib/framework/engine"
-	engineJobs "gitlab.com/skyrix-lib/framework/engine/jobs"
-	"gitlab.com/skyrix-lib/framework/logging"
-)
+import "context"
 
-type Kernel struct {
-	Config any
-	Logger logger.Interface
-
-	DB    *engine.Database
-	Cache engine.Cache
-	Jobs  engineJobs.Registry
+// Component is a lifecycle unit managed by the runtime. Start must not block:
+// long-running work (serving, consuming) runs in the background until Stop.
+type Component interface {
+	Start(context.Context) error
+	Stop(context.Context) error
 }
 
-func NewKernel(
-	cfg any,
-	log logger.Interface,
-	db *engine.Database,
-	cache engine.Cache,
-	jobs engineJobs.Registry,
-) *Kernel {
-	return &Kernel{
-		Config: cfg,
-		Logger: log,
-		DB:     db,
-		Cache:  cache,
-		Jobs:   jobs,
-	}
+// Kernel is the lifecycle of a whole binary, implemented by Runtime.
+type Kernel interface {
+	Component
+}
+
+// FailureNotifier is implemented by components whose background work can fail
+// after Start, such as servers and consumers. The channel receives the
+// failure; Run then stops the binary.
+type FailureNotifier interface {
+	Failed() <-chan error
 }

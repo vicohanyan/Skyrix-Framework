@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"log" // Keep standard log for build errors if custom logger isn't ready
+	"os"
 	"os/signal"
 	"syscall"
+
+	"gitlab.com/skyrix-lib/framework/kernel"
 )
 
 func main() {
@@ -18,16 +21,15 @@ func main() {
 		// Use a standard logger here because the app's logger might not be initialized yet
 		log.Fatalf("Failed to build http app: %v", err)
 	}
+
 	// 3. Defer the cleanup function that wire provides
 	defer cleanup()
 
-	// Use your custom logger for application runtime messages
-	app.Kernel.Logger.Info("HTTP application built successfully", "address", app.Server.Addr)
-
-	// 4. Run the application
-	if err := app.Run(ctx, app.Kernel.Logger); err != nil {
-		// The app's logger is available now
-		app.Kernel.Logger.Error("HTTP app run failed", "error", err)
+	// 4. Run until a signal arrives or a component fails
+	if err := kernel.Run(ctx, app.Runtime); err != nil {
+		app.Logger.Error("HTTP app run failed", "error", err)
+		cleanup()
+		os.Exit(1)
 	}
-	app.Kernel.Logger.Info("HTTP application stopped")
+	app.Logger.Info("HTTP application stopped")
 }

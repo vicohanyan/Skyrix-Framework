@@ -3,12 +3,12 @@ package providers
 import (
 	"testing"
 
-	kernelJobs "gitlab.com/skyrix-lib/framework/kernel/jobs"
+	engineJobs "gitlab.com/skyrix-lib/framework/engine/jobs"
 	"gitlab.com/skyrix-lib/template/internal/jobs"
 )
 
 func TestProvideRegisteredJobsRegistryRegistersAllJobs(t *testing.T) {
-	reg := kernelJobs.NewRegistry(noopProviderLogger{})
+	reg := engineJobs.NewRegistry(noopProviderLogger{})
 	registered := ProvideRegisteredJobsRegistry(reg, &Jobs{
 		SystemPingJob: jobs.NewSystemPingJob(noopProviderLogger{}),
 	})
