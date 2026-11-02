@@ -10,6 +10,9 @@ import (
 )
 
 type RouterOptions struct {
+	// Timeout bounds each request: the request context is cancelled after
+	// it and the client gets 504 if the handler has not written a response.
+	// Zero or negative disables the timeout.
 	Timeout    time.Duration
 	Recover    func(http.Handler) http.Handler
 	Decompress func(http.Handler) http.Handler
@@ -30,7 +33,9 @@ func NewRouter(options RouterOptions) chi.Router {
 		r.Use(options.Recover)
 	}
 	r.Use(chiMiddleware.Logger)
-	r.Use(chiMiddleware.Timeout(options.Timeout))
+	if options.Timeout > 0 {
+		r.Use(chiMiddleware.Timeout(options.Timeout))
+	}
 
 	// Request gzip decompression. Keep this.
 	if options.Decompress != nil {

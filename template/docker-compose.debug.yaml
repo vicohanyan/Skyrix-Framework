@@ -7,7 +7,7 @@ services:
     command:
       - "dlv"
       - "exec"
-      - "/app/delivery"
+      - "/app/http"
       - "--headless"
       - "--listen=:2345"
       - "--api-version=2"

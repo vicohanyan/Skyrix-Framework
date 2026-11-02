@@ -17,6 +17,11 @@ const docTemplate = `{
     "paths": {
         "/api/v1/examples/tasks/": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns example tasks in descending creation order.",
                 "produces": [
                     "application/json"
@@ -42,19 +47,36 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/skyrix_internal_domain_example_dto.TaskResult"
+                                "$ref": "#/definitions/gitlab_com_skyrix-lib_template_internal_domain_example_dto.TaskResult"
                             }
+                        }
+                    },
+                    "401": {
+                        "description": "missing or invalid token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "token role is not allowed",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorPayload"
+                            "$ref": "#/definitions/handler.ErrorPayload"
                         }
                     }
                 }
             },
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Creates a task with PENDING status.",
                 "consumes": [
                     "application/json"
@@ -73,7 +95,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/skyrix_internal_domain_example_dto.CreateTaskInput"
+                            "$ref": "#/definitions/gitlab_com_skyrix-lib_template_internal_domain_example_dto.CreateTaskInput"
                         }
                     }
                 ],
@@ -81,19 +103,31 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/skyrix_internal_domain_example_dto.TaskResult"
+                            "$ref": "#/definitions/gitlab_com_skyrix-lib_template_internal_domain_example_dto.TaskResult"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorPayload"
+                            "$ref": "#/definitions/handler.ErrorPayload"
+                        }
+                    },
+                    "401": {
+                        "description": "missing or invalid token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "token role is not allowed",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorPayload"
+                            "$ref": "#/definitions/handler.ErrorPayload"
                         }
                     }
                 }
@@ -101,6 +135,11 @@ const docTemplate = `{
         },
         "/api/v1/examples/tasks/{task_id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Returns an example task by its numeric identifier.",
                 "produces": [
                     "application/json"
@@ -123,25 +162,37 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/skyrix_internal_domain_example_dto.TaskResult"
+                            "$ref": "#/definitions/gitlab_com_skyrix-lib_template_internal_domain_example_dto.TaskResult"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorPayload"
+                            "$ref": "#/definitions/handler.ErrorPayload"
+                        }
+                    },
+                    "401": {
+                        "description": "missing or invalid token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "token role is not allowed",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorPayload"
+                            "$ref": "#/definitions/handler.ErrorPayload"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorPayload"
+                            "$ref": "#/definitions/handler.ErrorPayload"
                         }
                     }
                 }
@@ -149,6 +200,11 @@ const docTemplate = `{
         },
         "/api/v1/examples/tasks/{task_id}/complete": {
             "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Changes an example task status from PENDING to COMPLETED.",
                 "produces": [
                     "application/json"
@@ -171,31 +227,43 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/skyrix_internal_domain_example_dto.TaskResult"
+                            "$ref": "#/definitions/gitlab_com_skyrix-lib_template_internal_domain_example_dto.TaskResult"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorPayload"
+                            "$ref": "#/definitions/handler.ErrorPayload"
+                        }
+                    },
+                    "401": {
+                        "description": "missing or invalid token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "token role is not allowed",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorPayload"
+                            "$ref": "#/definitions/handler.ErrorPayload"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorPayload"
+                            "$ref": "#/definitions/handler.ErrorPayload"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/internal_handlers.ErrorPayload"
+                            "$ref": "#/definitions/handler.ErrorPayload"
                         }
                     }
                 }
@@ -203,46 +271,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "internal_handlers.ErrorBody": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "details": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_handlers.FieldError"
-                    }
-                },
-                "message": {
-                    "type": "string"
-                },
-                "request_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "internal_handlers.ErrorPayload": {
-            "type": "object",
-            "properties": {
-                "error": {
-                    "$ref": "#/definitions/internal_handlers.ErrorBody"
-                }
-            }
-        },
-        "internal_handlers.FieldError": {
-            "type": "object",
-            "properties": {
-                "field": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "skyrix_internal_domain_example_dto.CreateTaskInput": {
+        "gitlab_com_skyrix-lib_template_internal_domain_example_dto.CreateTaskInput": {
             "type": "object",
             "required": [
                 "title"
@@ -258,7 +287,7 @@ const docTemplate = `{
                 }
             }
         },
-        "skyrix_internal_domain_example_dto.TaskResult": {
+        "gitlab_com_skyrix-lib_template_internal_domain_example_dto.TaskResult": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -283,6 +312,53 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "handler.ErrorBody": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "details": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.FieldError"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                },
+                "request_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.ErrorPayload": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/handler.ErrorBody"
+                }
+            }
+        },
+        "handler.FieldError": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "JWT access token: \"Bearer \u003ctoken\u003e\".",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
     }
 }`
@@ -293,8 +369,8 @@ var SwaggerInfo = &swag.Spec{
 	Host:             "",
 	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "Skyrix Delivery API",
-	Description:      "HTTP API for the Skyrix Delivery service.",
+	Title:            "Skyrix Template API",
+	Description:      "HTTP API of an application built from the Skyrix framework template.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

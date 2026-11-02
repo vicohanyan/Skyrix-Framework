@@ -1,24 +1,25 @@
 APP_ENV: local
-SERVICE_NAME: skyrix-framework
+SERVICE_NAME: app
 
 LOGGER:
   LOG_OUTPUT: stdout
   LOG_TYPE: text
   LOG_LEVEL: debug
   LOG_DIR: ./logs
-  LOG_FILE: framework.log
+  LOG_FILE: app.log
 
 HTTP_SERVER:
   APP_ADDRESS: 0.0.0.0
-  APP_PORT: 7540
+  APP_PORT: 8080
   APP_REQUEST_TIMEOUT: 5s
+  APP_READ_HEADER_TIMEOUT: 10s
 
 DATABASE:
   DB_HOST: postgres
   DB_PORT: 5432
   DB_USER: skyrix
   DB_PASS: secret
-  DB_NAME: skyrix_framework
+  DB_NAME: app
   DB_MAIN_SCHEMA: public
 
 REDIS:
@@ -27,7 +28,7 @@ REDIS:
   REDIS_PASS: ""
   REDIS_DB: 0
   # Required: root of every Redis key of this service (no default).
-  REDIS_KEY_PREFIX: skyrix-framework
+  REDIS_KEY_PREFIX: app
 
 JWT:
   JWT_PUBLIC_KEY_PATH: "/run/secrets/jwt/public.pem"
@@ -35,20 +36,11 @@ JWT:
   JWT_ALGORITHM: RS256
   JWT_ISSUER: skyrix-auth
   JWT_AUDIENCE: ""
-  # Token roles accepted by the auth middleware; empty accepts every role.
-  # Add roles here as the token issuer introduces them.
-  JWT_ALLOWED_ROLES: [customer]
-
-QUEUE:
-  QUEUE_ENABLED: false
-  QUEUE_HOST: nats
-  QUEUE_PORT: 4222
-  QUEUE_NAME: skyrix-framework
-  QUEUE_USER: ""
-  QUEUE_PASS: ""
-  QUEUE_RETRY_TIMEOUT: 5s
-  QUEUE_RECONNECT_TIMEOUT: 2s
-  DLQ_PREFIX: "dlq."
+  # Token roles accepted by the framework auth middleware
+  # (extensions/auth/middleware). Empty accepts every role of a valid token.
+  # Example: JWT_ALLOWED_ROLES: [customer, admin]
+  # or JWT_ALLOWED_ROLES=customer,admin in the environment.
+  JWT_ALLOWED_ROLES: []
 
 TENANT_CACHE:
   TENANT_CACHE_TTL: 3m

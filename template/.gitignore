@@ -1,0 +1,12 @@
+# Local secrets: JWT keys (secret/jwt_public.pem is mounted by Compose) and
+# environment files. Never commit them, also after the template becomes its
+# own repository.
+/secret/
+.env
+.env.*
+!.env.example
+
+# Local artefacts
+/logs/
+/bin/
+/tmp/

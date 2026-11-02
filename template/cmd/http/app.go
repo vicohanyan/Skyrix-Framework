@@ -10,7 +10,7 @@ import (
 // httpApp is the HTTP binary run by one kernel runtime. Components start from
 // the root of the dependency graph to the leaves and stop in reverse:
 //  1. engine infrastructure (PostgreSQL),
-//  2. platform modules (EventBus, later tenant, auth, ...),
+//  2. platform modules (platform drivers),
 //  3. the HTTP host that serves the domains.
 type httpApp struct {
 	Runtime *kernel.Runtime

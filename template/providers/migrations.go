@@ -7,8 +7,6 @@ import (
 	"gitlab.com/skyrix-lib/framework/logger"
 	"gitlab.com/skyrix-lib/template/internal/config"
 	"gitlab.com/skyrix-lib/template/migrations"
-
-	"github.com/goforj/wire"
 )
 
 // ProvideMigrationSettings defers configuration loading until a migration
@@ -33,10 +31,9 @@ func ProvideMigrationSource() fs.FS {
 	return migrations.FS
 }
 
-// MigrationSet provides the framework SQL migration commands for the
-// embedded migrations.
-var MigrationSet = wire.NewSet(
-	ProvideMigrationSettings,
-	ProvideMigrationSource,
-	migratecmd.New,
-)
+// ProvideMigrationCommands returns the standalone db migrate* commands for the
+// embedded migrations. Building them reads no configuration and opens no
+// connection: the settings are loaded when a migration command runs.
+func ProvideMigrationCommands() *migratecmd.Commands {
+	return migratecmd.New(ProvideMigrationSettings(), ProvideMigrationSource())
+}

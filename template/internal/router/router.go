@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 
+	authmiddleware "gitlab.com/skyrix-lib/framework/extensions/auth/middleware"
 	"gitlab.com/skyrix-lib/framework/httpserver"
 	"gitlab.com/skyrix-lib/template/internal/config"
 	"gitlab.com/skyrix-lib/template/providers"
@@ -17,9 +18,13 @@ type TenantMiddleware interface {
 	Wrap(next http.Handler) http.Handler
 }
 
+// InitRouter builds the HTTP routes. System routes (/health, /metrics) are
+// open; the /api/v1 routes require a valid bearer token checked by auth
+// (roles from JWT_ALLOWED_ROLES).
 func InitRouter(
 	cfg *config.HttpServer,
 	globalMw *providers.GlobalMiddleware,
+	auth *authmiddleware.AuthMiddleware,
 	tenantMw TenantMiddleware,
 	handlers *providers.Handlers,
 	healthChecks httpserver.HealthChecks,
@@ -32,6 +37,7 @@ func InitRouter(
 
 	httpserver.RegisterSystemRoutes(r, healthChecks)
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(auth.Handle)
 		mountExampleRoutes(r, handlers)
 	})
 

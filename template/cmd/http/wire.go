@@ -28,6 +28,7 @@ func buildHTTPApp() (*httpApp, func(), error) {
 		// 5. App layer
 		providers.HandlerProviderSet,
 		providers.GlobalMiddlewareProviderSet,
+		providers.AuthVerifierSet,
 
 		// 6. HTTP layer
 		validation.NewValidator,

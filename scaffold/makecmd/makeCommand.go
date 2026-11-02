@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/skyrix-lib/framework/cobra/console"
 	"gitlab.com/skyrix-lib/framework/database/migrate"
 	"gitlab.com/skyrix-lib/framework/database/migrate/atlas"
 	support "gitlab.com/skyrix-lib/framework/scaffold"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // DefaultDomainDir is where business domains live, relative to the project root.
@@ -34,44 +36,44 @@ func NewMakeCommand() *MakeCommand {
 	return &MakeCommand{ProjectRoot: ".", DomainDir: DefaultDomainDir, Now: time.Now, LookupAtlas: atlas.Lookup}
 }
 
-// ToCobraCommand converts MakeCommand into a Cobra command tree.
-func (c *MakeCommand) ToCobraCommand() *cobra.Command {
-	command := &cobra.Command{
+// Command describes the "make" group. Its commands are standalone
+// (console.NeedsNothing): they only write files in the project.
+func (c *MakeCommand) Command() *console.Command {
+	return &console.Command{
 		Use:   "make",
 		Short: "Create project scaffolding",
-	}
-	command.AddCommand(
-		&cobra.Command{
-			Use:   "domain <Name>",
-			Short: "Create a business-domain directory skeleton",
-			Args:  cobra.ExactArgs(1),
-			RunE: func(cmd *cobra.Command, args []string) error {
-				name, root, err := c.resolve(args[0])
-				if err != nil {
-					return err
-				}
-				domainRoot := c.domainDirectory(root, name.Package)
-				if _, err := os.Stat(domainRoot); err == nil {
-					return fmt.Errorf("domain already exists: %s", name.Package)
-				} else if !os.IsNotExist(err) {
-					return fmt.Errorf("inspect domain: %w", err)
-				}
+		Commands: []*console.Command{
+			{
+				Use:   "domain <Name>",
+				Short: "Create a business-domain directory skeleton",
+				Args:  cobra.ExactArgs(1),
+				Run: console.Standalone(func(cmd *cobra.Command, args []string) error {
+					name, root, err := c.resolve(args[0])
+					if err != nil {
+						return err
+					}
+					domainRoot := c.domainDirectory(root, name.Package)
+					if _, err := os.Stat(domainRoot); err == nil {
+						return fmt.Errorf("domain already exists: %s", name.Package)
+					} else if !os.IsNotExist(err) {
+						return fmt.Errorf("inspect domain: %w", err)
+					}
 
-				directories := []struct {
-					path        string
-					packageName string
-				}{
-					{"dto", "dto"},
-					{"entity", "entity"},
-					{"interfaces", "interfaces"},
-					{"repository", "repository"},
-					{"services", "services"},
-					{"unitOfWork", "unitofwork"},
-				}
-				if err := os.MkdirAll(domainRoot, 0o755); err != nil {
-					return fmt.Errorf("create domain directory: %w", err)
-				}
-				provider := fmt.Sprintf(`// Package %s contains the %s business domain.
+					directories := []struct {
+						path        string
+						packageName string
+					}{
+						{"dto", "dto"},
+						{"entity", "entity"},
+						{"interfaces", "interfaces"},
+						{"repository", "repository"},
+						{"services", "services"},
+						{"unitOfWork", "unitofwork"},
+					}
+					if err := os.MkdirAll(domainRoot, 0o755); err != nil {
+						return fmt.Errorf("create domain directory: %w", err)
+					}
+					provider := fmt.Sprintf(`// Package %s contains the %s business domain.
 				package %s
 				
 				import "github.com/goforj/wire"
@@ -79,34 +81,34 @@ func (c *MakeCommand) ToCobraCommand() *cobra.Command {
 				// ProviderSet contains the domain providers.
 				var ProviderSet = wire.NewSet()
 				`, name.Package, name.Type, name.Package)
-				if err := support.WriteNewFile(filepath.Join(domainRoot, "provider.go"), []byte(provider)); err != nil {
-					_ = os.RemoveAll(domainRoot)
-					return err
-				}
-				for _, directory := range directories {
-					doc := fmt.Sprintf("// Package %s contains %s domain scaffolding.\npackage %s\n", directory.packageName, name.Type, directory.packageName)
-					if err := support.WriteNewFile(filepath.Join(domainRoot, directory.path, "doc.go"), []byte(doc)); err != nil {
+					if err := support.WriteNewFile(filepath.Join(domainRoot, "provider.go"), []byte(provider)); err != nil {
 						_ = os.RemoveAll(domainRoot)
 						return err
 					}
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "domain created: %s\n", name.Package)
-				return nil
+					for _, directory := range directories {
+						doc := fmt.Sprintf("// Package %s contains %s domain scaffolding.\npackage %s\n", directory.packageName, name.Type, directory.packageName)
+						if err := support.WriteNewFile(filepath.Join(domainRoot, directory.path, "doc.go"), []byte(doc)); err != nil {
+							_ = os.RemoveAll(domainRoot)
+							return err
+						}
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "domain created: %s\n", name.Package)
+					return nil
+				}),
 			},
-		},
-		&cobra.Command{
-			Use:   "repository <Name>",
-			Short: "Create a minimal domain repository skeleton",
-			Args:  cobra.ExactArgs(1),
-			RunE: func(cmd *cobra.Command, args []string) error {
-				name, root, err := c.resolve(args[0])
-				if err != nil {
-					return err
-				}
-				if err := c.requireDomain(root, name.Package); err != nil {
-					return err
-				}
-				content := fmt.Sprintf(`package repository
+			{
+				Use:   "repository <Name>",
+				Short: "Create a minimal domain repository skeleton",
+				Args:  cobra.ExactArgs(1),
+				Run: console.Standalone(func(cmd *cobra.Command, args []string) error {
+					name, root, err := c.resolve(args[0])
+					if err != nil {
+						return err
+					}
+					if err := c.requireDomain(root, name.Package); err != nil {
+						return err
+					}
+					content := fmt.Sprintf(`package repository
 
 				// %sRepository provides persistence scaffolding for the %s domain.
 				type %sRepository struct{}
@@ -116,27 +118,27 @@ func (c *MakeCommand) ToCobraCommand() *cobra.Command {
 					return &%sRepository{}
 				}
 				`, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type)
-				path := filepath.Join(c.domainDirectory(root, name.Package), "repository", name.Package+"Repository.go")
-				if err := support.WriteNewFile(path, []byte(content)); err != nil {
-					return err
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "repository created: %s\n", name.Package)
-				return nil
+					path := filepath.Join(c.domainDirectory(root, name.Package), "repository", name.Package+"Repository.go")
+					if err := support.WriteNewFile(path, []byte(content)); err != nil {
+						return err
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "repository created: %s\n", name.Package)
+					return nil
+				}),
 			},
-		},
-		&cobra.Command{
-			Use:   "service <Name>",
-			Short: "Create a minimal domain service skeleton",
-			Args:  cobra.ExactArgs(1),
-			RunE: func(cmd *cobra.Command, args []string) error {
-				name, root, err := c.resolve(args[0])
-				if err != nil {
-					return err
-				}
-				if err := c.requireDomain(root, name.Package); err != nil {
-					return err
-				}
-				content := fmt.Sprintf(`package services
+			{
+				Use:   "service <Name>",
+				Short: "Create a minimal domain service skeleton",
+				Args:  cobra.ExactArgs(1),
+				Run: console.Standalone(func(cmd *cobra.Command, args []string) error {
+					name, root, err := c.resolve(args[0])
+					if err != nil {
+						return err
+					}
+					if err := c.requireDomain(root, name.Package); err != nil {
+						return err
+					}
+					content := fmt.Sprintf(`package services
 
 				// %sService provides application-service scaffolding for the %s domain.
 				type %sService struct{}
@@ -146,22 +148,21 @@ func (c *MakeCommand) ToCobraCommand() *cobra.Command {
 					return &%sService{}
 				}
 				`, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type)
-				path := filepath.Join(c.domainDirectory(root, name.Package), "services", name.Package+"Service.go")
-				if err := support.WriteNewFile(path, []byte(content)); err != nil {
-					return err
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "service created: %s\n", name.Package)
-				return nil
+					path := filepath.Join(c.domainDirectory(root, name.Package), "services", name.Package+"Service.go")
+					if err := support.WriteNewFile(path, []byte(content)); err != nil {
+						return err
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "service created: %s\n", name.Package)
+					return nil
+				}),
 			},
+			c.migrationCommand(),
 		},
-		c.migrationCommand(),
-	)
-	return command
+	}
 }
 
-func (c *MakeCommand) migrationCommand() *cobra.Command {
-	var noTx bool
-	cmd := &cobra.Command{
+func (c *MakeCommand) migrationCommand() *console.Command {
+	return &console.Command{
 		Use:   "migration <name>",
 		Short: "Create an empty SQL migration for hand-written changes",
 		Long: `Create migrations/<YYYYMMDDHHMMSS>_<name>.sql for SQL that is not generated from
@@ -169,7 +170,11 @@ the models (extensions, triggers, functions, data fixes). With --notx the file
 is named *.notx.sql and runs outside a transaction. When atlas is installed,
 atlas.sum is updated with "atlas migrate hash".`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Flags: func(flags *pflag.FlagSet) {
+			flags.Bool("notx", false, "run the migration outside a transaction (e.g. CREATE INDEX CONCURRENTLY)")
+		},
+		Run: console.Standalone(func(cmd *cobra.Command, args []string) error {
+			noTx, _ := cmd.Flags().GetBool("notx")
 			root, err := support.ProjectRoot(c.ProjectRoot)
 			if err != nil {
 				return err
@@ -211,10 +216,8 @@ atlas.sum is updated with "atlas migrate hash".`,
 				return fmt.Errorf("update atlas.sum: %w", err)
 			}
 			return nil
-		},
+		}),
 	}
-	cmd.Flags().BoolVar(&noTx, "notx", false, "run the migration outside a transaction (e.g. CREATE INDEX CONCURRENTLY)")
-	return cmd
 }
 
 func (c *MakeCommand) resolve(raw string) (support.Name, string, error) {

@@ -4,44 +4,40 @@
 package main
 
 import (
-	frameworkcobra "gitlab.com/skyrix-lib/framework/cobra"
-	"gitlab.com/skyrix-lib/framework/cobra/corecmd"
+	"gitlab.com/skyrix-lib/framework/database/dbcmd"
 	"gitlab.com/skyrix-lib/template/internal/commands"
 	"gitlab.com/skyrix-lib/template/providers"
 
 	"github.com/goforj/wire"
 )
 
-func buildConsoleApp() (*frameworkcobra.ConsoleApp, func(), error) {
+// buildApp builds the application graph of the console: the dependencies of
+// the application commands and the job registry. It runs only when a command
+// that needs the application graph runs (console.NeedsApp).
+func buildApp() (*appGraph, func(), error) {
 	wire.Build(
 		// 1) Configuration and logger
 		providers.ConfigSet,
 
-		// 2) Infrastructure used by the console
-		providers.PostgresSet,
-
-		// 3) Compile-time platform modules
-		providers.PlatformSet,
-
-		// 4) Console layer: framework commands, then application commands
-		providers.MigrationSet,
+		// 2) Jobs (jobs:run)
 		providers.ConsoleJobProviderSet,
-		providers.CoreCommandSet,
-		commands.ProviderSet,
-		providers.ConsoleProviderSet,
 
-		// 5) Final console app
-		frameworkcobra.NewConsoleApp,
+		// 3) Application commands
+		commands.ProviderSet,
+
+		wire.Struct(new(appGraph), "*"),
 	)
 	return nil, nil, nil
 }
 
-// buildStandaloneCommands builds the commands that run without the application
-// container. Building them reads no configuration and opens no connection.
-func buildStandaloneCommands() *corecmd.StandaloneCommands {
+// buildDatabase builds the database graph: configuration, logger, PostgreSQL,
+// models and seeders. It runs only for db automigrate and db seed
+// (console.NeedsDatabase).
+func buildDatabase() (*dbcmd.Deps, func(), error) {
 	wire.Build(
-		providers.MigrationSet,
-		providers.StandaloneCommandSet,
+		providers.ConfigSet,
+		providers.PostgresSet,
+		providers.DatabaseCommandSet,
 	)
-	return nil
+	return nil, nil, nil
 }

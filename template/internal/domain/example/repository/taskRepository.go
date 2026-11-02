@@ -7,21 +7,21 @@ import (
 
 	"gorm.io/gorm"
 
-	"gitlab.com/skyrix-lib/framework/engine"
+	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/entity"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/interfaces"
 )
 
 type TaskRepository struct {
-	db *engine.Database
+	db *gormdb.Database
 }
 
-func NewTaskRepository(db *engine.Database) *TaskRepository {
+func NewTaskRepository(db *gormdb.Database) *TaskRepository {
 	return &TaskRepository{db: db}
 }
 
 func (r *TaskRepository) WithTx(tx *gorm.DB) *TaskRepository {
-	return &TaskRepository{db: &engine.Database{DB: tx, MainSchema: r.db.MainSchema}}
+	return &TaskRepository{db: &gormdb.Database{DB: tx, MainSchema: r.db.MainSchema}}
 }
 
 func (r *TaskRepository) Create(ctx context.Context, task *entity.Task) (*entity.Task, error) {

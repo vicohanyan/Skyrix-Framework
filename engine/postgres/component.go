@@ -7,8 +7,6 @@ import (
 	"fmt"
 
 	"gitlab.com/skyrix-lib/framework/kernel"
-
-	"gorm.io/gorm"
 )
 
 // Component manages the lifecycle of a PostgreSQL pool in a kernel.Runtime:
@@ -23,20 +21,9 @@ var (
 	_ kernel.HealthChecker = (*Component)(nil)
 )
 
-// NewComponent returns the lifecycle component for the pool behind db.
-func NewComponent(db *gorm.DB) (*Component, error) {
-	if db == nil {
-		return nil, errors.New("postgres: db is nil")
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("postgres: %w", err)
-	}
-	return &Component{db: sqlDB}, nil
-}
-
-// NewSQLComponent returns the lifecycle component for a database/sql pool.
-func NewSQLComponent(db *sql.DB) *Component {
+// NewComponent returns the lifecycle component for a database/sql pool.
+// gormdb.NewComponent builds it from a *gorm.DB.
+func NewComponent(db *sql.DB) *Component {
 	return &Component{db: db}
 }
 

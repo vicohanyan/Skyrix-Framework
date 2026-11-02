@@ -7,9 +7,6 @@
 package main
 
 import (
-	"gitlab.com/skyrix-lib/eventbus"
-	"gitlab.com/skyrix-lib/eventbus/platform"
-	"gitlab.com/skyrix-lib/template/internal/transport/nats/v1"
 	"gitlab.com/skyrix-lib/template/providers"
 )
 
@@ -17,30 +14,20 @@ import (
 
 // buildWorkerApp builds the worker graph. It has no HTTP server, no database
 // and no Redis; add providers.PostgresSet or providers.RedisSet and the domain
-// sets when subscribers need them, and pass their *enginepostgres.Component or
-// *engineredis.Component to newWorkerApp as the first runtime components.
+// sets when background components need them, and pass their
+// *enginepostgres.Component or *engineredis.Component to newWorkerApp as the
+// first runtime components.
 func buildWorkerApp() (*workerApp, func(), error) {
+	platform, err := providers.ProvidePlatform()
+	if err != nil {
+		return nil, nil, err
+	}
 	config, err := providers.ProvideConfig()
 	if err != nil {
 		return nil, nil, err
 	}
-	eventBus := &config.EventBus
 	loggerInterface := providers.ProvideLogger(config)
-	v := platform.ProvideLogger(loggerInterface)
-	v2, cleanup, err := eventbus.ProvideBus(eventBus, v)
-	if err != nil {
-		return nil, nil, err
-	}
-	runtime := platform.NewRuntime(v2)
-	module := platform.NewModule(runtime)
-	kernelPlatform, err := providers.ProvidePlatform(module)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
-	}
-	subscriberGroup := v1.NewSubscriberGroup(v2)
-	mainWorkerApp := newWorkerApp(kernelPlatform, subscriberGroup, loggerInterface)
+	mainWorkerApp := newWorkerApp(platform, loggerInterface)
 	return mainWorkerApp, func() {
-		cleanup()
 	}, nil
 }

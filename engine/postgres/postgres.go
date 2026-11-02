@@ -1,10 +1,10 @@
-// Package postgres connects an application to PostgreSQL: configuration,
-// opening a GORM or database/sql connection pool, and the lifecycle
-// component with the health check.
+// Package postgres connects an application to PostgreSQL through
+// database/sql: configuration, opening the pgx connection pool, and the
+// lifecycle component with the health check.
 //
-// The package exposes *gorm.DB and *sql.DB directly. It knows nothing about
-// tenants, schemas or domains: engine.Database adds schema switching on top
-// of the *gorm.DB it provides.
+// The package does not use GORM and knows nothing about request schemas or
+// domains: engine/postgres/gormdb opens a GORM connection from the same
+// Config and adds schema switching.
 package postgres
 
 import (
@@ -15,11 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"gitlab.com/skyrix-lib/framework/logger"
-
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
-	gormpostgres "gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 // Config describes a PostgreSQL connection. Zero pool values keep the
@@ -84,28 +80,9 @@ func quote(value string) string {
 	return "'" + value + "'"
 }
 
-// Open validates the configuration and opens a GORM connection pool. It does
-// not contact the server: the Component pings it on Start. The caller closes
-// the pool.
-func Open(cfg Config) (*gorm.DB, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-	db, err := gorm.Open(gormpostgres.Open(cfg.DSN()), &gorm.Config{DisableAutomaticPing: true})
-	if err != nil {
-		return nil, err
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, err
-	}
-	configurePool(sqlDB, cfg)
-	return db, nil
-}
-
-// OpenSQL opens a database/sql connection pool through the pgx driver without
-// GORM and verifies the connection, for consumers such as database/migrate.
-// The caller closes the pool.
+// OpenSQL opens a database/sql connection pool through the pgx driver and
+// verifies the connection, for consumers such as database/migrate. The
+// caller closes the pool.
 func OpenSQL(ctx context.Context, cfg Config) (*sql.DB, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -114,7 +91,7 @@ func OpenSQL(ctx context.Context, cfg Config) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	configurePool(db, cfg)
+	cfg.ConfigurePool(db)
 	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := db.PingContext(pingCtx); err != nil {
@@ -124,25 +101,10 @@ func OpenSQL(ctx context.Context, cfg Config) (*sql.DB, error) {
 	return db, nil
 }
 
-// Provide opens the GORM pool for Wire and returns a cleanup that closes it.
-// Add NewComponent to the binary's runtime so the connection is verified on
-// start.
-func Provide(cfg Config, log logger.Interface) (*gorm.DB, func(), error) {
-	db, err := Open(cfg)
-	if err != nil {
-		log.Error("Unable to initialize postgres database", "error", err)
-		return nil, nil, err
-	}
-	cleanup := func() {
-		if sqlDB, err := db.DB(); err == nil {
-			log.Info("Closing postgres database connection")
-			_ = sqlDB.Close()
-		}
-	}
-	return db, cleanup, nil
-}
-
-func configurePool(db *sql.DB, cfg Config) {
+// ConfigurePool applies the pool settings of c to db; zero values keep the
+// database/sql defaults. Packages that open the pool themselves (gormdb)
+// use it to honour the same settings.
+func (cfg Config) ConfigurePool(db *sql.DB) {
 	if cfg.MaxOpenConns > 0 {
 		db.SetMaxOpenConns(cfg.MaxOpenConns)
 	}

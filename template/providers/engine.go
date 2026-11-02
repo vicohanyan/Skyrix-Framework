@@ -4,25 +4,25 @@ import (
 	"net"
 	"strconv"
 
-	"gitlab.com/skyrix-lib/framework/engine"
 	enginepostgres "gitlab.com/skyrix-lib/framework/engine/postgres"
+	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
 	engineredis "gitlab.com/skyrix-lib/framework/engine/redis"
-	"gitlab.com/skyrix-lib/framework/engine/scope"
 	"gitlab.com/skyrix-lib/template/internal/config"
 
 	"github.com/goforj/wire"
 	"gorm.io/gorm"
 )
 
-// PostgresSet opens PostgreSQL through GORM and provides *gorm.DB,
-// *engine.Database and the lifecycle *enginepostgres.Component. Include it
+// PostgresSet opens PostgreSQL through GORM (engine/postgres/gormdb) and
+// provides *gorm.DB, *gormdb.Database and the lifecycle
+// *enginepostgres.Component. Include it
 // only in binaries that use the database, and add the component to the
 // binary's runtime before the components that use it.
 var PostgresSet = wire.NewSet(
 	ProvideDatabaseConfig,
 	ProvidePostgresOptions,
-	enginepostgres.Provide,
-	enginepostgres.NewComponent,
+	gormdb.Provide,
+	gormdb.NewComponent,
 	ProvideDatabaseService,
 )
 
@@ -49,11 +49,13 @@ func ProvidePostgresOptions(cfg *config.Database) enginepostgres.Config {
 	}
 }
 
-func ProvideDatabaseService(db *gorm.DB, cfg *config.Config) (*engine.Database, error) {
-	if err := db.Use(&scope.Plugin{}); err != nil {
+// ProvideDatabaseService registers the schema-routing plugin and returns the
+// schema-aware database.
+func ProvideDatabaseService(db *gorm.DB, cfg *config.Config) (*gormdb.Database, error) {
+	if err := db.Use(&gormdb.Plugin{}); err != nil {
 		return nil, err
 	}
-	return engine.NewDatabaseService(db, cfg.Database.MainSchema), nil
+	return gormdb.NewDatabase(db, cfg.Database.MainSchema), nil
 }
 
 func ProvideRedisConfig(cfg *config.Config) *config.Redis {

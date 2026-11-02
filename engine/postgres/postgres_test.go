@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"strings"
 	"testing"
@@ -47,20 +48,24 @@ func TestDSN(t *testing.T) {
 	}
 }
 
-// Open does not contact the server; the component's Start does.
-func TestOpenIsLazyAndStartPings(t *testing.T) {
-	db, err := postgres.Open(postgres.Config{Host: "127.0.0.1", Port: 1, Database: "none", MaxOpenConns: 3})
-	if err != nil {
-		t.Fatalf("Open() error = %v, want lazy open", err)
-	}
-	sqlDB, _ := db.DB()
-	if got := sqlDB.Stats().MaxOpenConnections; got != 3 {
-		t.Fatalf("MaxOpenConnections = %d, want 3", got)
-	}
-	component, err := postgres.NewComponent(db)
+func TestConfigurePool(t *testing.T) {
+	db, err := sql.Open("pgx", postgres.Config{Host: "127.0.0.1", Port: 1, Database: "none"}.DSN())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer db.Close()
+	postgres.Config{MaxOpenConns: 3}.ConfigurePool(db)
+	if got := db.Stats().MaxOpenConnections; got != 3 {
+		t.Fatalf("MaxOpenConnections = %d, want 3", got)
+	}
+}
+
+func TestComponentStartPingsAndStopCloses(t *testing.T) {
+	db, err := sql.Open("pgx", postgres.Config{Host: "127.0.0.1", Port: 1, Database: "none"}.DSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	component := postgres.NewComponent(db)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := component.Start(ctx); err == nil {
@@ -72,17 +77,14 @@ func TestOpenIsLazyAndStartPings(t *testing.T) {
 	if err := component.Stop(ctx); err != nil {
 		t.Fatalf("second Stop() error = %v", err)
 	}
+	if err := postgres.NewComponent(nil).Check(ctx); err == nil {
+		t.Fatal("Check() with nil db = nil, want error")
+	}
 }
 
-func TestOpenRejectsInvalidConfig(t *testing.T) {
-	if _, err := postgres.Open(postgres.Config{}); err == nil {
-		t.Fatal("Open(empty config) error = nil")
-	}
+func TestOpenSQLRejectsInvalidConfig(t *testing.T) {
 	if _, err := postgres.OpenSQL(context.Background(), postgres.Config{}); err == nil {
 		t.Fatal("OpenSQL(empty config) error = nil")
-	}
-	if _, err := postgres.NewComponent(nil); err == nil {
-		t.Fatal("NewComponent(nil) error = nil")
 	}
 }
 
@@ -106,17 +108,7 @@ func TestAgainstRealPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenSQL() error = %v", err)
 	}
-	checkLifecycle(t, postgres.NewSQLComponent(sqlDB))
-
-	db, err := postgres.Open(cfg)
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	component, err := postgres.NewComponent(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkLifecycle(t, component)
+	checkLifecycle(t, postgres.NewComponent(sqlDB))
 }
 
 func checkLifecycle(t *testing.T, component *postgres.Component) {
@@ -137,12 +129,12 @@ func checkLifecycle(t *testing.T, component *postgres.Component) {
 }
 
 // TestPostgresImportsOnlyInfrastructure keeps the connection package free of
-// its consumers (engine.Database, tenant, domains).
+// GORM and of its consumers (gormdb, tenant, domains): it may import only the
+// standard library, the pgx database/sql driver and the kernel contracts.
 func TestPostgresImportsOnlyInfrastructure(t *testing.T) {
-	depcheck.Check(t, "gitlab.com/skyrix-lib/framework/engine/postgres", func(pkg depcheck.Package) bool {
+	depcheck.CheckPackage(t, "gitlab.com/skyrix-lib/framework/engine/postgres", func(pkg depcheck.Package) bool {
 		switch pkg.ImportPath {
-		case "gorm.io/gorm", "gorm.io/driver/postgres", "github.com/jackc/pgx/v5/stdlib",
-			"gitlab.com/skyrix-lib/framework/kernel", "gitlab.com/skyrix-lib/framework/logger":
+		case "github.com/jackc/pgx/v5/stdlib", "gitlab.com/skyrix-lib/framework/kernel":
 			return true
 		}
 		return pkg.Standard

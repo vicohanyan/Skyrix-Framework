@@ -8,17 +8,18 @@ import (
 	"gitlab.com/skyrix-lib/framework/extensions/tenant/context"
 	"gitlab.com/skyrix-lib/framework/extensions/tenant/schemaResolver"
 
-	"gitlab.com/skyrix-lib/framework/engine"
+	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
+	"gitlab.com/skyrix-lib/framework/engine/scope"
 	"gitlab.com/skyrix-lib/framework/logger"
 )
 
 type TenantMiddleware struct {
 	Log      logger.Interface
-	DB       *engine.Database
+	DB       *gormdb.Database
 	Resolver *schemaResolver.SchemaResolver
 }
 
-func NewTenantMiddleware(log logger.Interface, db *engine.Database, resolver *schemaResolver.SchemaResolver) *TenantMiddleware {
+func NewTenantMiddleware(log logger.Interface, db *gormdb.Database, resolver *schemaResolver.SchemaResolver) *TenantMiddleware {
 	return &TenantMiddleware{Log: log, DB: db, Resolver: resolver}
 }
 
@@ -52,7 +53,7 @@ func (m *TenantMiddleware) Handle(next http.Handler) http.Handler {
 		}
 
 		ctx := r.Context()
-		ctx = context.WithSchema(ctx, schema)
+		ctx = scope.WithSchema(ctx, schema)
 		ctx = context.WithResolvedBy(ctx, by)
 
 		next.ServeHTTP(w, r.WithContext(ctx))

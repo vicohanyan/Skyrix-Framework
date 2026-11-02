@@ -49,12 +49,11 @@ func (m *AuthMiddleware) Handle(next http.Handler) http.Handler {
 			return
 		}
 
-		if !strings.HasPrefix(authHeader, "Bearer ") {
+		tokenString, ok := BearerToken(authHeader)
+		if !ok {
 			http.Error(w, "invalid Authorization header format", http.StatusUnauthorized)
 			return
 		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
 		claims, err := m.jwtService.ValidateToken(r.Context(), tokenString)
 		if err != nil {
@@ -69,4 +68,19 @@ func (m *AuthMiddleware) Handle(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r.WithContext(authcontext.WithClaims(r.Context(), claims)))
 	})
+}
+
+// BearerToken returns the token of an Authorization header value of the form
+// "<scheme> <token>" whose scheme is Bearer. The scheme is compared
+// case-insensitively (RFC 7235): "Bearer", "bearer" and "BEARER" are
+// accepted. Scheme and token are separated by the first space; everything
+// after it is the token, unchanged (extra whitespace is not trimmed and makes
+// the token invalid). It reports false for another scheme, a missing
+// separator or an empty token.
+func BearerToken(header string) (string, bool) {
+	scheme, token, found := strings.Cut(header, " ")
+	if !found || token == "" || !strings.EqualFold(scheme, "Bearer") {
+		return "", false
+	}
+	return token, true
 }

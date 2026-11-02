@@ -9,7 +9,7 @@ import (
 )
 
 func ProvideHTTPServerOptions(cfg *config.HttpServer) httpserver.Options {
-	return httpserver.Options{Address: cfg.Address, Port: cfg.Port}
+	return httpserver.Options{Address: cfg.Address, Port: cfg.Port, ReadHeaderTimeout: cfg.ReadHeaderTimeout}
 }
 
 // ProvideHealthChecks lists the dependencies checked by GET /health. Add the

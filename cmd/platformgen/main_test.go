@@ -75,3 +75,31 @@ func TestRenderUsesConfigImport(t *testing.T) {
 		}
 	}
 }
+
+// A commented-out directive is not a directive.
+func TestParseDirectivesIgnoresCommentedDirectives(t *testing.T) {
+	path := writeDirectiveFile(t, `package providers
+// //skyrix:platform example.com/eventbus/platform config=EventBus
+`)
+	directives, err := parseDirectives(path)
+	if err != nil || len(directives) != 0 {
+		t.Fatalf("directives = %#v, %v; want none", directives, err)
+	}
+}
+
+// Without directives the generated code is an empty but valid platform.
+func TestRenderWithoutDirectives(t *testing.T) {
+	generated, err := render(nil, "example.com/app/internal/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := string(generated)
+	for _, want := range []string{"var PlatformSet = wire.NewSet(\n\tProvidePlatform,\n)", "func ProvidePlatform() (*kernel.Platform, error)", "frameworkcobra.ModuleCommands()"} {
+		if !strings.Contains(code, want) {
+			t.Fatalf("generated code does not contain %q:\n%s", want, code)
+		}
+	}
+	if strings.Contains(code, "internal/config") {
+		t.Fatalf("generated code imports the config package without config directives:\n%s", code)
+	}
+}

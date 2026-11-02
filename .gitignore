@@ -5,4 +5,3 @@
 
 logs/*.log
 .tmp/
-secret/delivery-e2e.env

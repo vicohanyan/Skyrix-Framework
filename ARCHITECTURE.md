@@ -1,377 +1,237 @@
-# Skyrix Framework — Architecture & Balance Pattern
-
-## Overview
-
-Skyrix Framework is an open-source, template-based Go framework designed for building
-long-lived backend services with a strong architectural foundation.
-
-The framework is built around a **Balance Pattern** that explicitly separates
-stable infrastructure concerns from evolving business logic, while keeping
-the system pragmatic and product-driven.
-
-This document describes the core architecture, package taxonomy,
-and the data access strategy used throughout the framework.
-
----
-
-## Core Architectural Idea
-
-Skyrix Framework follows a layered, responsibility-driven architecture with
-clear boundaries between framework internals and domain logic.
-
-The system is intentionally split into:
-
-- **Framework Internals** — technical and infrastructural mechanisms
-- **Domain Packages** — business logic and domain behavior
-- **Application Assembly** — composition and wiring
-- **Entry Points** — executable boundaries
-
-Each layer evolves at a different pace and serves a distinct purpose.
-
----
-
-## High-Level Project Structure
-
-Typical layout (template-first):
-
-- `cmd/` — application entry points (http, console)
-- `config/` — environment-specific configuration (YAML)
-- `docs/` — documentation (optional)
-- `internal/` — framework internals and domain modules
-
-Entry points contain no business logic; assembly is explicit; domains stay isolated.
-
----
-
-## Two Types of Packages (Key Concept)
-
-Skyrix Framework distinguishes **two categories of packages**:
-
-1. **Framework packages (engine / kernel / Cobra infrastructure)**
-2. **Template domain packages (business logic)**
-
-This separation is a foundation of the Balance Pattern.
-
----
-
-## 1) Framework Packages
-
-**Location:** `engine`, `kernel`, `cobra`, `logging`, `extensions`, and framework `internal` adapters.
-
-Internal packages represent the **platform layer**:
-- domain-agnostic infrastructure
-- cross-cutting concerns
-- lifecycle and transport plumbing
-
-### Characteristics
-
-- Technical responsibilities (db, redis, transactions, http wiring, middleware)
-- Domain-agnostic by design
-- Public mechanisms are imported by the template
-- PostgreSQL is infrastructure in `engine/postgres`: configuration,
-  `*gorm.DB`/`*sql.DB` and the lifecycle `Component` with `Check`.
-  `engine.Database` adds tenant schema switching on top
-- Redis is infrastructure in `engine/redis`: configuration, `*redis.Client`
-  (go-redis, not wrapped), the lifecycle `Component` (Start pings, Stop
-  closes, `Check` is the health check) and `Keyspace` for key prefixes. It
-  does not know its consumers; auth, the tenant cache and others build their
-  own stores on the client, each in its own key namespace
-
----
-
-## 2) Domain Packages (Business)
-
-**Location:** `template/internal/domain/*`
-
-Domain packages contain business logic and domain behavior.
-Each domain is self-contained and owns its internal structure.
-
-Typical domain structure:
-
-- `entity/` — domain entities (write model)
-- `repository/` — persistence layer for domain operations
-- `services/` — domain services and business rules
-- `provider.go` — module integration point for assembly/DI
-
-Domains are free to evolve quickly without forcing framework-level API changes.
-
----
-
-## Application Assembly & Providers
-
-**Location:** `template/providers`, plus assembly wiring in `template/cmd/*/wire.go`
-
-Assembly is responsible for:
-- composition of domains and internal components,
-- initialization order,
-- dependency injection wiring (Wire-based),
-- HTTP routes/handlers registration.
-
-Assembly goes from the root of the dependency graph to the leaves, both in
-`wire.Build` and in the runtime component order:
-
-1. engine (microkernel infrastructure): configuration, logger, `PostgresSet`,
-   `RedisSet` and their components;
-2. platform packages: EventBus, tenant, auth and other modules;
-3. domains and the hosts that serve them (HTTP host, subscribers).
-
-`kernel.Runtime` starts components in this order and stops them in reverse,
-so a host never runs without the database or platform modules it uses.
-
-`template/providers` is reserved for application runtime composition and
-configuration: domains, handlers, jobs, middleware, infrastructure, and
-platform components. Console commands are composed separately and are not
-registered in this package.
-
-### Console Command Graphs
-
-The console application combines two independent Wire graphs:
-
-- `internal/commands.ProviderSet` — application-specific commands maintained by
-  the service;
-- `providers.CoreCommandSet` — the commands built into the framework
-  (`cobra/corecmd`: `db` from `database/dbcmd`, `jobs:run`, `make`); the
-  application supplies only `internal/database` models and seeders.
-
-Both graphs are included by `template/cmd/cobra/wire.go` and are passed to
-`cobra.ConsoleApp`, which mounts both command lists on the Cobra root. This
-keeps user commands independent from framework tooling while preserving
-explicit compile-time dependency injection.
-
----
-
-## Entry Points
-
-**Location:** `template/cmd/http`, `template/cmd/cobra`
-
-Entry points define:
-- how the application starts,
-- which runtime is used (HTTP server / console),
-- what gets assembled.
-
-They contain no domain logic.
-
----
-
-## The Balance Pattern
-
-### The Problem
-
-Systems usually fail by choosing an extreme:
-
-- overly abstract frameworks with frozen APIs, or
-- unstructured codebases that degrade over time.
-
-Skyrix Framework avoids both through the **Balance Pattern**.
-
----
-
-## What Is the Balance Pattern?
-
-The Balance Pattern is the principle of placing stability and change
-into different layers:
-
-- stable structure enables controlled change,
-- change remains local to domains,
-- reusable parts are extracted only after proof in real usage.
-
----
-
-## Zones of Stability
-
-These areas change slowly and define the framework:
-
-- project structure and conventions
-- lifecycle and bootstrapping
-- configuration model
-- cross-cutting concerns (logging, auth context, tenant resolution)
-
-These form the **Framework Core**.
-
----
-
-## Zones of Change
-
-These areas evolve quickly:
-
-- business rules
-- domain modules
-- integrations
-- service-specific behavior
-
-They live in **domain packages and assembly**, not in the core.
-
----
-
-## Template-first, Library-later
-
-Skyrix Framework intentionally starts as a **template**:
-
-- code is copied, not imported,
-- public APIs are not frozen prematurely,
-- architecture is validated by real usage.
-
-Stable components may later be extracted into Go modules (`go get`).
-
----
-
-## Dependency Injection as a Balance Tool
-
-Wire-based DI is used to:
-- make dependencies explicit,
-- control composition at the assembly layer,
-- avoid hidden global state.
-
-DI belongs to assembly, not domain.
-
----
-
-## Multi-Tenancy as a First-Class Concern
-
-Multi-tenancy is treated as a cross-cutting architectural concern:
-
-- tenant resolution happens early in the request lifecycle
-- tenant context flows through the system
-- tenant routing/schema logic stays centralized
-
-This prevents tenant logic from leaking into domain code.
-
----
-
-## Data Access Strategy & CQRS Balance
-
-Skyrix Framework does not enforce a strict CQRS implementation,
-but follows a **pragmatic CQRS-inspired approach** to data access.
-
-The goal is to balance:
-- developer productivity,
-- performance,
-- safety,
-- and long-term maintainability.
-
-### Architectural Style
-
-Skyrix Framework follows a layered DDD-inspired architecture with a pragmatic,
-performance-aware approach to reads.
-
-- **Write path:** domain-oriented, transactional, ORM-backed, focused on enforcing invariants.
-- **Read path:** CQRS-inspired, optimized for performance and clarity; complex reads may use raw SQL to build
-  **read models / projections** that combine multiple tables into a single logical representation
-  aligned with a specific API use case (not a domain aggregate).
-
-This approach keeps domain logic clean while allowing production-grade query performance.
-
----
-
-## Command vs Query Responsibilities
-
-The framework conceptually distinguishes between:
-
-- **Commands** — operations that change state
-- **Queries** — operations that read data
-
-This distinction is logical, not infrastructural.
-Commands and queries may coexist in the same domain module,
-but they follow different data access rules.
-
----
-
-## Commands (Write Path)
-
-Commands are expected to:
-- modify domain state,
-- enforce business rules,
-- operate within transactional boundaries.
-
-### Command Data Access Rules
-
-- ORM is preferred for write operations
-- Entities are the primary write model
-- Transactions are managed by the framework
-- Business invariants live in domain services
-
----
-
-## Queries (Read Path)
-
-Queries are treated as read-only operations and are optimized for performance and clarity.
-
-### Query Data Access Rules
-
-- Simple queries may use ORM repositories
-- Complex queries may use raw SQL
-- Raw SQL queries should:
-  - be explicit and readable,
-  - be optimized for the specific use case,
-  - avoid unnecessary ORM abstractions.
-
-To maintain safety and consistency:
-- raw SQL is executed through database/ORM wrappers,
-- parameter binding and connection handling remain centralized,
-- results are mapped into DTOs/read models.
-
----
-
-## ORM as a Safety Boundary
-
-ORM is treated as a safety boundary, not as a universal abstraction.
-
-ORM responsibilities:
-- connection and transaction management,
-- parameter binding,
-- protection against SQL injection,
-- consistent error handling.
-
-ORM is not required to express every complex query.
-
----
-
-## Read Models vs Write Models
-
-Skyrix Framework allows using different models for reads and writes:
-
-- **Write models:** domain entities, ORM-managed, enforce invariants
-- **Read models:** DTOs/projections, SQL-backed, optimized for API responses
-
-This separation improves:
-- performance,
-- clarity,
-- evolution of read APIs without breaking domain logic.
-
----
-
-## Why This Is Not “Strict CQRS”
-
-Skyrix Framework intentionally avoids:
-- mandatory command/query buses,
-- duplicated infrastructure layers,
-- artificial separation that adds complexity without value.
-
-Instead, it provides:
-- conceptual CQRS boundaries,
-- clear rules for data access,
-- freedom to evolve toward stricter CQRS when justified.
-
----
-
-## Architectural Non-Goals
-
-The framework intentionally avoids:
-
-- enforcing strict DDD terminology
-- providing universal abstractions
-- hiding complexity behind generic interfaces
-- competing with low-level Go libraries
-
----
-
-## Summary
-
-Skyrix Framework architecture is built on explicit boundaries:
-
-- internal vs domain packages,
-- stability vs change,
-- template vs library.
-
-This balance allows the framework to evolve naturally without sacrificing
-clarity or long-term maintainability.
+# Skyrix Framework — Architecture (v0.3)
+
+This document describes the framework as it is in the code of this repository.
+Items that are planned but not implemented are marked **planned**.
+
+## Two modules
+
+| Module                            | Directory   | How a service uses it                                                        |
+|-----------------------------------|-------------|------------------------------------------------------------------------------|
+| `gitlab.com/skyrix-lib/framework` | `/`         | **Imported** (`go get`). Reusable kernel, engine, hosts and extensions.      |
+| `gitlab.com/skyrix-lib/template`  | `template/` | **Copied** into a new repository. The application scaffold that imports the framework. |
+
+The framework never imports the template. The template owns everything that is
+specific to an application: configuration structure, Wire graphs, domains,
+routes, migrations, Compose and Dockerfiles. During development the template
+uses the framework through `replace gitlab.com/skyrix-lib/framework => ..`.
+
+## Layers
+
+```text
+template (copied)     cmd/http · cmd/cobra · cmd/worker · providers · internal/domain/...
+                          │ imports
+extensions            extensions/auth · extensions/tenant
+                          │
+hosts                 httpserver · cobra/console (+ corecmd) · database/dbcmd, migrate
+                          │
+engine                engine/postgres · engine/postgres/gormdb · engine/redis · engine/scope · engine/jobs
+                          │
+kernel                kernel · kernel/jobs                     (standard library only)
+```
+
+Dependencies point down. The rules that are enforced by tests are listed in
+[Dependency rules](#dependency-rules).
+
+### kernel — contracts and the execution core
+
+`kernel` is the microkernel. It depends only on the standard library.
+
+- Contracts: `Component` (`Start`, `Stop`; `Start` must not block),
+  `Kernel` (the lifecycle of a binary), `FailureNotifier` (background work that
+  can fail after `Start`), `HealthChecker` (`Check(ctx)`).
+- `Runtime` (`NewRuntime(components...)`): starts components in order; if one
+  fails to start, the ones already started are stopped in reverse. `Stop`
+  stops all components in reverse order and joins the errors. `Failed`
+  forwards the first failure of a component that implements `FailureNotifier`.
+- `Run(ctx, kernel, options...)`: the run loop of every long-running binary.
+  It starts the kernel, waits until `ctx` is cancelled (signal) or a component
+  fails, then stops the kernel within `DefaultStopTimeout` (10 s,
+  `WithStopTimeout`).
+- Module registry: `Module` (`Name`, `Components`) and `Platform`
+  (`NewPlatform(modules...)` validates names and keeps registration order).
+  Further capabilities are optional interfaces declared by the hosts that use
+  them, for example `cobra.CommandProvider`.
+- `kernel/jobs`: the `Job` and `Registry` contracts.
+
+### engine — core infrastructure
+
+The `engine` root package contains no code; the modules are subpackages.
+
+| Package                  | Contents                                                                                                                                                                                                 |
+|--------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `engine/postgres`        | `database/sql` only, no GORM: `Config` (`Validate`, quoted `DSN`, `ConfigurePool`), `OpenSQL` (pgx driver, pings), `Component` (`NewComponent(*sql.DB)`: `Start` pings, `Stop` closes, `Check` health check). |
+| `engine/postgres/gormdb` | GORM on top of `engine/postgres`: `Open`/`Provide` (`*gorm.DB`, lazy, no ping), `NewComponent(*gorm.DB)` → `*postgres.Component`, `Database`/`NewDatabase` (schema switching), the `DB` interface, the schema-routing `Plugin`, `TxManager` (deprecated). |
+| `engine/redis`           | `Config` (with required `KeyPrefix`), `Open`/`Provide` (`*redis.Client` from go-redis, not wrapped), `Component`, `Keyspace` (`Sub`, `Key`). Consumers build their own stores on the client.             |
+| `engine/scope`           | The request data scope in `context.Context`: `WithSchema`/`SchemaFrom`, model scopes `Scoped` (default) and `Main` (`ScopedModel`, `MainModel`), `TableBasable`. Standard library only.               |
+| `engine/jobs`            | `RuntimeRegistry` (`NewRegistry`), `ExecuteJob`/`ExecuteJobAsync` (retries, panic protection); `engine/jobs/jobscmd` is the `jobs:run` console command.                                                  |
+
+#### Request schema
+
+`engine/scope` is the only channel through which the database layer learns the
+schema of a request, and it knows nothing about where the schema comes from:
+
+1. an extension resolves the schema and stores it with `scope.WithSchema`
+   (the tenant middleware does this for every request);
+2. `gormdb.Database.WithContext(ctx)` reads `scope.SchemaFrom(ctx)` and sets
+   `search_path` to `<schema>, <main>, public`, or `<main>, public` when the
+   context carries no schema;
+3. `gormdb.Plugin`, when registered with `db.Use`, qualifies the table of
+   every query/create/update/delete callback: `scope.Main` models use the main
+   schema, all other models the request schema (main when there is none).
+   Statements that bypass these callbacks (`Raw`, `Row`, `Scan`) rely on
+   `search_path` only.
+
+### hosts
+
+| Package                                  | Contents                                                                                                                                                                                                                 |
+|------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `httpserver`                             | `NewServer` (`ReadHeaderTimeout` defaults to 10s), `NewRouter` (chi: request ID, client IP, optional recover, request log, timeout, optional request decompression, response compression), `RegisterSystemRoutes` (`GET /health` runs the `HealthChecks` in parallel, `GET /metrics` Prometheus), `Host` — the server as a `kernel.Component` that binds on `Start` and reports serving errors through `Failed`. `httpserver/handler`: JSON decoding, validation and structured errors; `httpserver/middleware`: recover, gzip decompression; `httpserver/gzip`. |
+| `cobra`                                  | Console capability of platform modules: `CommandProvider` + `ModuleCommands`.                                                                                                                                            |
+| `cobra/console`                          | Cobra console host: `Command` (a command described once: metadata, flags and a `Runner`), `Standalone`/`With` (runners without dependencies or with a lazily built `Graph`), `Needs` (`NeedsNothing`, `NeedsDatabase`, `NeedsApp`), `Graph` (`NewGraph` around a Wire injector, `Derive`, `Value`) and `Console` (`New`, `Add`, `AddCobra`, `Execute`). |
+| `cobra/corecmd`                          | Describes the framework commands: `db` (`database/dbcmd`), `jobs:run`, `make` (`Commands(Options)`).                                                                                                                       |
+| `database/migrate`                       | Forward-only SQL migration runner (see [Migrations](#migrations)), standard library only. `migratecmd` — the `db migrate*` commands; `atlas` — runs the Atlas CLI.                                                       |
+| `database/dbcmd`                         | The `db` command group: the migration commands plus `db automigrate` (GORM AutoMigrate, development only) and `db seed`. The application supplies only `dbcmd.Models` and `dbcmd.Seeders`.                              |
+
+There is no worker host package: the template's `cmd/worker` is a
+`kernel.Runtime` of platform components (empty in the template: it starts,
+waits for a signal and stops). A job scheduler and a gRPC host are
+**planned**.
+
+### extensions
+
+Optional packages plugged in by the application; the engine and the kernel do
+not know them.
+
+- `extensions/auth`: `contracts` (store interfaces), `context` (claims in
+  context), `middleware` (bearer-token middleware, roles from
+  `JWT_ALLOWED_ROLES`), `security` (claims, password hashing), `service`
+  (`Config`, JWT signing and verification), `storage` (passport cache, token
+  blacklist, sessions, refresh tokens on Redis under the `auth` key
+  namespace).
+- `extensions/tenant`: `entity.Tenant` (a `scope.Main` model), `repository`
+  and `service` (in-memory and Redis cache), `schemaResolver` (by header or
+  domain), `middleware` (`TenantMiddleware` resolves the schema and stores it
+  with `scope.WithSchema`; `CorsMiddleware`), `context` (how the tenant was
+  resolved). The application owns the `tenants` table and its migrations; see
+  [extensions/tenant/README.md](extensions/tenant/README.md).
+
+EventBus (NATS) is a platform driver in a separate module,
+`gitlab.com/skyrix-lib/eventbus`; the template does not include it and
+connects it as a platform module (see [Platform modules](#platform-modules)).
+
+### support packages
+
+`logger` (the `logger.Interface` used everywhere, slog-based),
+`validation` (go-playground validator), `scaffold` and `scaffold/makecmd`
+(`make domain|repository|service|migration`), `cmd/platformgen` (generator of
+the platform composition), `internal/depcheck` (dependency tests).
+
+## Platform modules
+
+A platform module (platform driver, an optional core such as EventBus)
+implements `kernel.Module` and may implement `cobra.CommandProvider`. The
+application declares its modules in `providers/platform.go`, for example:
+
+```go
+//go:generate go run gitlab.com/skyrix-lib/framework/cmd/platformgen
+//skyrix:platform gitlab.com/skyrix-lib/eventbus/platform config=EventBus
+```
+
+`go generate` runs `cmd/platformgen`, which writes `providers/platform_gen.go`
+with `PlatformSet` (Wire), `ProvidePlatform` and `PlatformCommands`. The
+module's components join the binary's runtime through
+`kernel.Platform.Components()`. Without directives the generated
+`PlatformSet` is empty and every binary gets a platform without modules; the
+template ships this way, with the EventBus directive commented out.
+
+Connecting a driver takes the same steps for every driver: add its module
+(`go get`), configure it, enable its directive, then run `go generate` and
+`go tool wire gen`. How a driver is configured is described in the driver's
+documentation. The configuration mechanism of platform drivers is
+**planned** to be revised; until then the driver documentation is the
+reference for the current mechanism.
+
+## Binaries and Wire graphs (template)
+
+Each binary has its own `wire.go` and includes only the provider sets it uses.
+
+| Binary       | Provider sets                                                                                                                   | Runtime components (start order)        |
+|--------------|---------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------|
+| `cmd/http`   | `ConfigSet`, `PostgresSet`, `PlatformSet`, `DomainProviderSet`, handlers, global middleware, `AuthVerifierSet`, router, `HTTPProviderSet` | postgres → platform modules → HTTP host |
+| `cmd/cobra`  | `buildApp`: `ConfigSet`, `ConsoleJobProviderSet`, `commands.ProviderSet`; `buildDatabase`: `ConfigSet`, `PostgresSet`, `DatabaseCommandSet` | — (runs one command)                    |
+| `cmd/worker` | `ConfigSet`, `PlatformSet`                                                                                                      | platform modules (none by default)      |
+
+`RedisSet`, `AuthProviderSet` (auth with Redis stores) and
+`TenantProviderSet` exist in `providers` but no binary includes them by
+default. The HTTP binary protects `/api/v1` with the framework auth
+middleware through `AuthVerifierSet` (token verification without Redis);
+`/health` and `/metrics` stay open.
+
+Assembly order rule: from the root of the dependency graph to the leaves, both
+in `wire.Build` and in the runtime: engine infrastructure (config, logger,
+PostgreSQL, Redis) → platform modules (platform drivers such as EventBus,
+tenant, auth) → domains and the hosts that serve them. `kernel.Runtime` stops in reverse, so a host never
+runs without the infrastructure it uses.
+
+Every console command is described once, as a `console.Command`: metadata
+for help and completion, and a runner that gets its dependencies only when the
+command runs. The framework commands are described by `cobra/corecmd`, the
+application commands by `internal/commands.All`, and platform module commands
+are added as Cobra commands (`PlatformCommands`). The descriptions are cheap
+to build; the dependency graphs are Wire injectors wrapped in a
+`console.Graph` and called lazily, right before the command that needs them:
+
+1. help and completion use only the metadata: nothing is configured or
+   connected;
+2. standalone commands (`console.NeedsNothing`: `make`, `db migrate*`,
+   platform commands) build no graph; `db migrate*` connect only to
+   PostgreSQL when they run;
+3. `db automigrate` and `db seed` (`console.NeedsDatabase`) build only the
+   database graph (`buildDatabase`);
+4. `jobs:run` and the application commands (`console.NeedsApp`) build the
+   application graph (`buildApp`).
+
+What a command needs follows from its runner (`console.Standalone` or
+`console.With(graph, ...)`), so it cannot drift from what the handler uses.
+
+## Migrations
+
+- Forward-only SQL files in the Atlas directory format:
+  `<YYYYMMDDHHMMSS>_<name>.sql`, or `.notx.sql` for statements that must run
+  outside a transaction. The application embeds its `migrations/` directory.
+- `database/migrate.Runner` applies them through `database/sql` (no GORM):
+  records each migration with a run number, checksum and application version
+  in `skyrix_migrations` (configurable), refuses modified applied files
+  unless explicitly allowed, and serialises runners with a PostgreSQL
+  advisory lock.
+- Commands: `db migrate` (`--steps`, `--to`), `db migrate:status`,
+  `db migrate:baseline <version>`, `db migrate:diff <name>` (generates a
+  migration from the GORM models with `atlas migrate diff`, needs the `atlas`
+  binary and `atlas.hcl`), `make migration <name>`. Migrations are applied by
+  `db migrate`, never by `atlas migrate apply`.
+- `db automigrate` (GORM AutoMigrate + seeders) is for development only and is
+  not recorded in `skyrix_migrations`.
+
+## Dependency rules
+
+The rules are checked by tests built on `internal/depcheck`, which reads the
+import graph with `go list -deps`. `go test` does not see changes of the import
+graph as test inputs, so run these tests with `-count=1`.
+
+| Rule                                                                                             | Test                                                |
+|--------------------------------------------------------------------------------------------------|-----------------------------------------------------|
+| `kernel/...` imports only the standard library                                                   | `kernel/deps_test.go`                               |
+| `engine/...` and `kernel/...` do not reach `extensions/...`, directly or transitively            | `internal/depcheck/boundaries_test.go`              |
+| `kernel/...`, `engine`, `engine/postgres`, `engine/scope/...`, `engine/redis/...`, `engine/jobs/...` do not reach `gorm.io/...`; GORM stays in `engine/postgres/gormdb` | `internal/depcheck/boundaries_test.go` |
+| `engine/postgres` imports only the standard library, the pgx `database/sql` driver and `kernel`  | `engine/postgres/postgres_test.go`                  |
+| `engine/redis/...` imports only the standard library, go-redis, `kernel` and `logger`            | `engine/redis/deps_test.go`                         |
+| `database/migrate` (the runner) imports only the standard library                                | `database/migrate/deps_test.go`                     |
+
+## Template versus framework
+
+| | Framework | Template |
+|---|---|---|
+| Distribution | Go module, imported with `go get` | copied into a new repository |
+| Contents | kernel, engine, hosts, extensions, generators | `cmd/*` binaries and Wire graphs, `providers`, `internal/config`, domains, handlers, router, migrations, Compose, Dockerfiles |
+| Changes | versioned (v0.3 is not compatible with v0.2.x, see CHANGELOG.md) | owned by the service after copying |
+| Example code | — | `internal/domain/example`, `internal/commands/HelloCommand.go`, `internal/jobs/systemPingJob.go` |

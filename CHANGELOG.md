@@ -33,19 +33,31 @@ support v0.2.x.
   interface.
 - `kernel/jobs` contains only the `Job` and `Registry` contracts. The in-memory
   registry moved to `engine/jobs` as `RuntimeRegistry` (`engine/jobs.NewRegistry`).
-- PostgreSQL is infrastructure in `engine/postgres`: `Config` (with quoted
-  DSN, `SSLMode` and pool settings), `Open`/`Provide` (`*gorm.DB`), `OpenSQL`
-  (`*sql.DB`), and the `kernel.Component` lifecycle (`NewComponent`: Start
-  pings, Stop closes, `Check` is the health check). `Open` no longer pings;
-  add the component to the runtime. Removed: `kernel`/`engine.PostgresOptions`,
+- PostgreSQL is infrastructure in `engine/postgres`, on `database/sql` without
+  GORM: `Config` (with quoted DSN, `SSLMode` and pool settings,
+  `Config.ConfigurePool`), `OpenSQL` (`*sql.DB`), and the `kernel.Component`
+  lifecycle (`NewComponent(*sql.DB)`: Start pings, Stop closes, `Check` is the
+  health check). Removed: `kernel`/`engine.PostgresOptions`,
   `ProvidePostgres`, `engine.OpenPostgresSQL` and `internal/postgres`.
+- GORM lives in `engine/postgres/gormdb`: `Open`/`Provide` (`*gorm.DB`; `Open`
+  no longer pings, add the component to the runtime), `NewComponent(*gorm.DB)`
+  (returns `*postgres.Component`), the schema-aware `Database`/`NewDatabase`
+  (was `engine.Database`/`engine.NewDatabaseService`), the `DB` interface
+  (was `engine.DB`), the schema-routing `Plugin` (was `scope.Plugin`) and the
+  deprecated `TxManager` (was `engine.TxManager`). The `engine` root package
+  holds no code; `engine`, `engine/postgres`, `engine/scope`, `engine/redis`,
+  `engine/jobs` and `kernel` do not import `gorm.io/...` (checked by
+  `internal/depcheck`).
 - The `buildinfo` package is removed. The application passes its version to
   the migration commands with `migratecmd.Settings.AppVersion`.
 - Auth moved from the template to `extensions/auth` (`contracts`, `context`,
   `middleware`, `security`, `service`, `storage`). `service.Config` replaces
   the template `config.JWT`; `middleware.NewAuthMiddleware` takes
   `middleware.Options{Roles}` (empty allows every role) and stores the claims
-  with `auth/context.WithClaims` instead of template context keys.
+  with `auth/context.WithClaims` instead of template context keys. The
+  middleware matches the `Bearer` scheme case-insensitively (RFC 7235;
+  `middleware.BearerToken` parses the header); another scheme or an empty
+  token is rejected with 401.
 - `httpserver.RegisterSystemRoutes(r, checks)` takes `httpserver.HealthChecks`.
   `GET /health` no longer always answers `ok`: it runs every check
   (`kernel.HealthChecker`, implemented by the PostgreSQL and Redis
@@ -61,8 +73,8 @@ support v0.2.x.
   `io.ErrUnexpectedEOF`.
 - The `db` console group (`migrate*`, `automigrate`, `seed`) is built into the
   framework (`database/dbcmd`); the application supplies only `dbcmd.Models`
-  and `dbcmd.Seeders`. `cobra/corecmd` assembles the framework commands
-  (`db`, `jobs:run`, `make`) and the standalone ones.
+  and `dbcmd.Seeders`. `cobra/corecmd.Commands` describes the framework
+  commands (`db`, `jobs:run`, `make`).
 - Redis is rebuilt as infrastructure in `engine/redis`. Removed:
   `engine.Redis`, `engine.NewRedisService`, `engine.RedisOpts`,
   `engine.RedisOptions`, `engine.ProvideRedis`, the `engine.Cache` interface
@@ -73,6 +85,14 @@ support v0.2.x.
   `service.Cache` (implemented by `extensions/tenant/cache.RedisCache`);
   `service.CacheOpts` is removed. Cache keys are unchanged below the prefix:
   `<prefix>:tenant:namespace:<ns>`, `<prefix>:tenant:domain:<domain>`.
+- `engine/scope` carries the request schema without knowing about tenants:
+  `scope.WithSchema`/`scope.SchemaFrom` replace `scope.WithTenant`/
+  `scope.TenantFrom`, and `scope.Tenant`/`scope.TenantModel` are renamed
+  `scope.Scoped`/`scope.ScopedModel`. `extensions/tenant/context.WithSchema`
+  and `SchemaFrom` are removed: the tenant middleware stores the resolved
+  schema with `scope.WithSchema`, and the database layer reads it from there.
+  `engine/...` and `kernel/...` no longer import `extensions/...` (checked by
+  `internal/depcheck`).
 - `engine.Runtime` and `engine.NewRuntime` moved to `kernel.Runtime` and
   `kernel.NewRuntime`; the `engine.Platform` alias is removed.
 - `httpserver.HTTPApp` and `httpserver.NewHTTPApp` are removed. The HTTP server
@@ -82,8 +102,14 @@ support v0.2.x.
   (`Name`, `Components`) and are registered with `kernel.NewPlatform`; console
   commands are an optional capability, `cobra.CommandProvider`, collected with
   `cobra.ModuleCommands`.
-- `cobra.NewConsoleApp(logger, groups)` takes a logger. `ConsoleApp.Kernel` is
-  replaced by `ConsoleApp.Logger`.
+- The console host moved to `cobra/console`. Removed: `cobra.ConsoleApp`,
+  `cobra.NewConsoleApp`, `cobra.CommandGroups` and `cobra.NewRootCommand`;
+  `cobra` keeps only `CommandProvider` and `ModuleCommands`. Framework
+  commands are `console.Command` descriptions: `dbcmd.Command` (with
+  `dbcmd.Deps`/`NewDeps` in place of `dbcmd.Commands`/`New`),
+  `jobscmd.Command` (replaces `JobsRunCommand`), `makecmd.MakeCommand.Command`
+  and `migratecmd.Commands.Command`/`Subcommands` (replace `ToCobraCommand`
+  and `CobraCommands`; `NewDBGroup` takes the subcommands).
 - `gitlab.com/skyrix-lib/framework/cobra/eventbus` is removed. The EventBus CLI
   lives in `gitlab.com/skyrix-lib/eventbus/cobra` and is registered through the
   EventBus platform module.
@@ -111,9 +137,40 @@ support v0.2.x.
   `go run gitlab.com/skyrix-lib/framework/cmd/platformgen`, `-config` sets the
   config package), `database/migrate/migratecmd` and `database/migrate/atlas`
   (migration commands), `scaffold/makecmd` (`make domain|repository|service|
-  migration`), `engine/jobs/jobscmd` (`jobs:run`), `cobra.ExecuteStandalone`
-  (commands that run without the container) and `httpserver/handler`
+  migration`), `engine/jobs/jobscmd` (`jobs:run`) and `httpserver/handler`
   (`BaseHandler`, JSON decoding, structured errors).
+
+### Changed
+
+- Console commands are described once (`cobra/console`): a `console.Command`
+  holds the metadata (use, help texts, arguments, flags) and a runner that
+  gets its dependencies only when the command runs — `console.Standalone`
+  or `console.With(graph, handler)`, where `console.Graph` wraps a Wire
+  injector and builds it on first use (`Derive` shares one graph between
+  commands). What a command needs (`console.Needs`: standalone, database,
+  application) follows from its runner. Help and completion are answered
+  from the metadata and never build a graph; a command builds only its own
+  graph, right before it runs. The template's `cmd/cobra` has an application
+  graph (`buildApp`) and a database graph (`buildDatabase`, used by
+  `db automigrate` and `db seed`); application commands are listed once in
+  `internal/commands.All`.
+- `httpserver.Options.ReadHeaderTimeout`: `NewServer` always sets
+  `http.Server.ReadHeaderTimeout` (Slowloris protection); zero or negative
+  uses `httpserver.DefaultReadHeaderTimeout` (10s). The template sets
+  `APP_READ_HEADER_TIMEOUT`.
+- `cmd/platformgen` accepts a `platform.go` without `//skyrix:platform`
+  directives and generates an empty but valid `PlatformSet`
+  (`ProvidePlatform` returns a platform without modules).
+
+### Fixed
+
+- `httpserver.NewRouter` with `RouterOptions.Timeout` zero or negative no
+  longer installs `chi` `Timeout(0)`, which cancelled every request context
+  immediately; a non-positive timeout now disables the request timeout.
+- `extensions/tenant/entity.Tenant`: the unique indexes no longer carry
+  `WHERE deleted_at IS NULL` — the model has no `deleted_at` column, so
+  `db automigrate` failed. The index names are unchanged, so AutoMigrate
+  leaves existing indexes alone.
 
 ### Deprecated
 
@@ -142,8 +199,9 @@ support v0.2.x.
   components from the root of the dependency graph to the leaves (engine
   infrastructure, platform modules, then hosts serving the domains) and stop
   in reverse. `APP_VERSION` is recorded with applied migrations.
-- `/health` checks PostgreSQL (`providers.ProvideHealthChecks`); the auth
-  middleware accepts the roles in `JWT_ALLOWED_ROLES` (`[customer]`).
+- `/health` checks PostgreSQL (`providers.ProvideHealthChecks`).
+  `JWT_ALLOWED_ROLES` is empty by default (the framework auth middleware then
+  accepts every role of a valid token).
 - `internal/auth`, `internal/utils`, `internal/scaffold` and the
   `DBMigrator`/`DBSeeder` are removed; `internal/database` lists only the
   models and seeders for the framework db commands.
@@ -151,3 +209,29 @@ support v0.2.x.
   `db migrate:baseline`, `db migrate:diff` (Atlas) and `make migration`. The
   former `db migrate` alias of `db automigrate` is removed; AutoMigrate is a
   development-only command.
+- Delivery leftovers are removed: Compose, Dockerfiles, configuration and the
+  README use neutral names (`app`, `app-postgres`, `app-redis`, binaries
+  `/app/http`, `/app/cobra`, `/app/worker`, port 8080); `StoreIDFromIdentity`
+  and the `store:` subject are removed from the auth middleware. PostGIS is
+  removed from the template: PostgreSQL runs from `postgres:18-alpine`, there
+  is no PostGIS image (`infra/postgres`) or PostGIS Atlas dev database, and
+  the `enable_postgis` migration is replaced by the example-domain table
+  migration.
+- Unused leftovers are removed: `internal/helpers`
+  (`GetSubscriberNameFromContext`), `internal/contextkeys` (the auth
+  middleware no longer stores claims under `user_claims`/`id`; use
+  `AuthIdentityFromContext`) and the `OAUTH` configuration section. The
+  Dockerfiles build with Go 1.27.3, and `template/.gitignore` keeps
+  `secret/`, `.env*`, `logs/` and `bin/` out of the repository.
+- EventBus is no longer part of the template: the `//skyrix:platform`
+  directive is commented out with instructions for connecting it as a
+  platform driver, `internal/transport/nats` and the `QUEUE` configuration
+  section are removed, and `gitlab.com/skyrix-lib/eventbus` is no longer a
+  dependency. `cmd/worker` is an empty runtime until the application adds
+  components.
+- The template's own auth middleware (`internal/middleware/auth.go`,
+  `AuthIdentity`, `RequireAnyRole`) is removed. The HTTP binary protects
+  `/api/v1` with `extensions/auth/middleware` through
+  `providers.AuthVerifierSet` (roles from `JWT_ALLOWED_ROLES`); `/health` and
+  `/metrics` stay open. `providers.AuthMiddlewareSet` is shared by
+  `AuthVerifierSet` and `AuthProviderSet`.

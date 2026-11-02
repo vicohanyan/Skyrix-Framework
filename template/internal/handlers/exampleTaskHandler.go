@@ -39,6 +39,9 @@ func NewExampleTaskHandler(log logger.Interface, validator *validation.Validator
 // @Success 201 {object} dto.TaskResult
 // @Failure 400 {object} httphandler.ErrorPayload
 // @Failure 500 {object} httphandler.ErrorPayload
+// @Security BearerAuth
+// @Failure 401 {string} string "missing or invalid token"
+// @Failure 403 {string} string "token role is not allowed"
 // @Router /api/v1/examples/tasks/ [post]
 func (h *ExampleTaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var input dto.CreateTaskInput
@@ -69,6 +72,9 @@ func (h *ExampleTaskHandler) Create(w http.ResponseWriter, r *http.Request) {
 // @Failure 400 {object} httphandler.ErrorPayload
 // @Failure 404 {object} httphandler.ErrorPayload
 // @Failure 500 {object} httphandler.ErrorPayload
+// @Security BearerAuth
+// @Failure 401 {string} string "missing or invalid token"
+// @Failure 403 {string} string "token role is not allowed"
 // @Router /api/v1/examples/tasks/{task_id} [get]
 func (h *ExampleTaskHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.taskID(w, r)
@@ -91,6 +97,9 @@ func (h *ExampleTaskHandler) Get(w http.ResponseWriter, r *http.Request) {
 // @Param limit query int false "Maximum number of tasks" default(20) minimum(1) maximum(100)
 // @Success 200 {array} dto.TaskResult
 // @Failure 500 {object} httphandler.ErrorPayload
+// @Security BearerAuth
+// @Failure 401 {string} string "missing or invalid token"
+// @Failure 403 {string} string "token role is not allowed"
 // @Router /api/v1/examples/tasks/ [get]
 func (h *ExampleTaskHandler) List(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -113,6 +122,9 @@ func (h *ExampleTaskHandler) List(w http.ResponseWriter, r *http.Request) {
 // @Failure 404 {object} httphandler.ErrorPayload
 // @Failure 409 {object} httphandler.ErrorPayload
 // @Failure 500 {object} httphandler.ErrorPayload
+// @Security BearerAuth
+// @Failure 401 {string} string "missing or invalid token"
+// @Failure 403 {string} string "token role is not allowed"
 // @Router /api/v1/examples/tasks/{task_id}/complete [patch]
 func (h *ExampleTaskHandler) Complete(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.taskID(w, r)

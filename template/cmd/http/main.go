@@ -1,3 +1,14 @@
+// Command http runs the HTTP binary of the application.
+//
+//	@title			Skyrix Template API
+//	@version		1.0
+//	@description	HTTP API of an application built from the Skyrix framework template.
+//	@BasePath		/
+//
+//	@securityDefinitions.apikey	BearerAuth
+//	@in							header
+//	@name						Authorization
+//	@description				JWT access token: "Bearer <token>".
 package main
 
 import (

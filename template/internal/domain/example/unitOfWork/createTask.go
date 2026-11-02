@@ -6,17 +6,17 @@ import (
 
 	"gorm.io/gorm"
 
-	"gitlab.com/skyrix-lib/framework/engine"
+	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/entity"
 	"gitlab.com/skyrix-lib/template/internal/domain/example/repository"
 )
 
 type CreateTaskUOW struct {
-	db   *engine.Database
+	db   *gormdb.Database
 	repo *repository.TaskRepository
 }
 
-func NewCreateTaskUnitOfWork(db *engine.Database, repo *repository.TaskRepository) *CreateTaskUOW {
+func NewCreateTaskUnitOfWork(db *gormdb.Database, repo *repository.TaskRepository) *CreateTaskUOW {
 	return &CreateTaskUOW{db: db, repo: repo}
 }
 

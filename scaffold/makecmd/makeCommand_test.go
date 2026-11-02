@@ -19,11 +19,11 @@ func TestMakeCommandCreatesDomainRepositoryAndService(t *testing.T) {
 	root := newScaffoldProject(t)
 	command := &MakeCommand{ProjectRoot: root}
 
-	if _, err := executeScaffoldCommand(command.ToCobraCommand(), "repository", "Payment"); err == nil {
+	if _, err := executeScaffoldCommand(command.Command().Cobra(), "repository", "Payment"); err == nil {
 		t.Fatal("repository before domain error = nil, want error")
 	}
 
-	output, err := executeScaffoldCommand(command.ToCobraCommand(), "domain", "Payment")
+	output, err := executeScaffoldCommand(command.Command().Cobra(), "domain", "Payment")
 	if err != nil {
 		t.Fatalf("make domain error = %v", err)
 	}
@@ -43,10 +43,10 @@ func TestMakeCommandCreatesDomainRepositoryAndService(t *testing.T) {
 		assertGoFileParses(t, filepath.Join(domain, path))
 	}
 
-	if _, err := executeScaffoldCommand(command.ToCobraCommand(), "repository", "Payment"); err != nil {
+	if _, err := executeScaffoldCommand(command.Command().Cobra(), "repository", "Payment"); err != nil {
 		t.Fatalf("make repository error = %v", err)
 	}
-	if _, err := executeScaffoldCommand(command.ToCobraCommand(), "service", "Payment"); err != nil {
+	if _, err := executeScaffoldCommand(command.Command().Cobra(), "service", "Payment"); err != nil {
 		t.Fatalf("make service error = %v", err)
 	}
 	repositoryPath := filepath.Join(domain, "repository", "paymentRepository.go")
@@ -61,7 +61,7 @@ func TestMakeCommandCreatesDomainRepositoryAndService(t *testing.T) {
 	}
 
 	for _, args := range [][]string{{"domain", "Payment"}, {"repository", "Payment"}, {"service", "Payment"}} {
-		if _, err := executeScaffoldCommand(command.ToCobraCommand(), args...); err == nil {
+		if _, err := executeScaffoldCommand(command.Command().Cobra(), args...); err == nil {
 			t.Fatalf("duplicate make %v error = nil, want error", args)
 		}
 	}
@@ -137,7 +137,7 @@ func TestMakeMigrationCreatesEmptyVersionedFile(t *testing.T) {
 		LookupAtlas: func() (string, error) { return "", errors.New("atlas missing") },
 	}
 
-	output, err := executeScaffoldCommand(command.ToCobraCommand(), "migration", "add_trigger")
+	output, err := executeScaffoldCommand(command.Command().Cobra(), "migration", "add_trigger")
 	if err != nil {
 		t.Fatalf("make migration error = %v", err)
 	}
@@ -149,16 +149,16 @@ func TestMakeMigrationCreatesEmptyVersionedFile(t *testing.T) {
 		t.Fatalf("make migration output = %q", output)
 	}
 
-	if _, err := executeScaffoldCommand(command.ToCobraCommand(), "migration", "other", "--notx"); err == nil {
+	if _, err := executeScaffoldCommand(command.Command().Cobra(), "migration", "other", "--notx"); err == nil {
 		t.Fatal("make migration with an existing version error = nil")
 	}
 	now = now.Add(time.Second)
-	if _, err := executeScaffoldCommand(command.ToCobraCommand(), "migration", "build_index", "--notx"); err != nil {
+	if _, err := executeScaffoldCommand(command.Command().Cobra(), "migration", "build_index", "--notx"); err != nil {
 		t.Fatalf("make notx migration error = %v", err)
 	}
 	readTestFile(t, filepath.Join(root, "migrations", "20261102135251_build_index.notx.sql"))
 
-	if _, err := executeScaffoldCommand(command.ToCobraCommand(), "migration", "Add-Trigger"); err == nil {
+	if _, err := executeScaffoldCommand(command.Command().Cobra(), "migration", "Add-Trigger"); err == nil {
 		t.Fatal("make migration accepted an invalid name")
 	}
 }

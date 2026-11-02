@@ -1,339 +1,256 @@
-# Skyrix Framework
+# Skyrix application template
 
-Delivery service for the Skyrix platform. The service exposes customer, store,
-delivery-admin, and super-admin HTTP APIs, consumes delivery events from NATS
-JetStream, and manages orders, couriers, route zones, batches, offers, and
-delivery jobs.
+Starting point for a new service on the Skyrix framework
+(`gitlab.com/skyrix-lib/framework`). The template is **copied**, not imported:
+a new project takes this directory, renames the module and owns the code from
+then on. The framework itself is a Go module the project imports; see
+[../README.md](../README.md) and [../ARCHITECTURE.md](../ARCHITECTURE.md).
 
-## Stack
+The template contains one example domain (`internal/domain/example`, an
+"example task" CRUD over HTTP) to show how domains, handlers, repositories,
+units of work and migrations fit together. Delete it once the first real
+domain exists.
 
-- Go 1.26
-- Chi HTTP router
-- PostgreSQL 18 with PostGIS and GORM
-- Redis
-- NATS JetStream
-- goforj/wire for compile-time dependency injection
-- Cobra CLI
-- Prometheus metrics
-- Swagger/OpenAPI
+## Starting a new project
 
-## Requirements
+1. Copy `template/` into a new repository.
+2. Rename the module in `go.mod` (`gitlab.com/skyrix-lib/template`) and in all
+   imports.
+3. In `go.mod`, replace the local `replace` directive for
+   `gitlab.com/skyrix-lib/framework` with a released version
+   (`go get gitlab.com/skyrix-lib/framework@<version>`).
+4. Rename the service: `SERVICE_NAME`, `DB_NAME`, `REDIS_KEY_PREFIX` in
+   `config/*.yaml`, and the `app` names in
+   `docker-compose.yaml` (project name, network aliases, volumes).
+5. Regenerate code (`go generate ./...`, see below), then
+   `go build ./... && go test ./...`.
 
-- Go 1.26+ for native development
-- Docker and Docker Compose for the containerized environment
-- An existing Docker network named `skyrix-network`
-- A NATS server reachable as `nats:4222` on that network
-- An RSA public key at `secret/jwt_public.pem` for local JWT validation
+## Binaries
 
-The local Compose file starts the application, PostgreSQL, and Redis. NATS is
-part of the shared Skyrix infrastructure and is not defined in this repository.
+Each binary has its own Wire graph (`cmd/<name>/wire.go`) and takes only the
+providers it needs. Long-running binaries run their components with
+`kernel.Run` (ordered start, reverse stop, shutdown on SIGINT/SIGTERM).
 
-## Quick start with Docker
+| Binary        | Graph                                                                                          | Purpose                                                |
+|---------------|------------------------------------------------------------------------------------------------|--------------------------------------------------------|
+| `cmd/http`    | config, logger, PostgreSQL (GORM), platform modules, example domain, handlers, middleware, router, HTTP host | HTTP API                                               |
+| `cmd/cobra`   | two lazily built graphs: application (config, logger, jobs, application command deps) and database (config, logger, PostgreSQL (GORM), models, seeders) | Console: database, jobs, scaffolding, platform commands |
+| `cmd/worker`  | config, logger, platform modules                                                               | Background work, no HTTP; an empty runtime until the application adds components |
 
-Create the shared network once, if it does not already exist:
+`providers` also defines `RedisSet`, `AuthProviderSet` and
+`TenantProviderSet`; no binary includes them by default. Add a set to a
+binary's `wire.go` when it needs Redis, the auth stores or the tenant
+middleware, and add its lifecycle component to the binary's runtime.
+
+## Authentication
+
+The HTTP binary protects the API with the framework bearer-token middleware
+(`extensions/auth/middleware`), wired by `providers.AuthVerifierSet`:
+
+- every route under `/api/v1` (the example routes) requires
+  `Authorization: Bearer <JWT>` (the scheme is case-insensitive: `bearer`
+  works too); a missing, malformed, expired or wrongly signed token, another
+  scheme, or a token without a user ID gets 401;
+- `GET /health` and `GET /metrics` stay open;
+- the token is verified with the public key at `JWT_PUBLIC_KEY_PATH` (needed
+  on start), `JWT_ALGORITHM`, and `JWT_ISSUER`/`JWT_AUDIENCE` when set;
+- `JWT_ALLOWED_ROLES` limits the token roles: an empty list (the default)
+  accepts every role of a valid token, otherwise other roles get 403:
+
+  ```yaml
+  JWT:
+    JWT_ALLOWED_ROLES: [customer, admin]   # or JWT_ALLOWED_ROLES=customer,admin
+  ```
+
+The handlers read the claims with `extensions/auth/context`.
+`AuthVerifierSet` checks only the token itself; to also reject blacklisted
+tokens and tokens without a session, use `providers.AuthProviderSet` instead
+(it needs `RedisSet`).
+
+## Running with Docker
+
+The Compose stack starts the HTTP binary, PostgreSQL 18 and Redis on the
+external network `skyrix-network`:
 
 ```bash
-docker network create skyrix-network
-```
-
-Build and start the local stack:
-
-```bash
+docker network create skyrix-network   # once
 docker compose up -d --build
-docker compose ps
-curl http://localhost:7540/health
+curl http://localhost:8080/health
 ```
 
-The service is available at `http://localhost:7540`. PostgreSQL is exposed on
-`127.0.0.1:5433`; Redis is available only inside `skyrix-network`.
+Requirements: an RSA public key at `secret/jwt_public.pem`.
 
-Stop the stack with:
-
-```bash
-docker compose down
-```
-
-To also remove local PostgreSQL and Redis data:
-
-```bash
-docker compose down -v
-```
-
-## Debugging with Delve
-
-The debug override builds the application with optimizations disabled and
-starts it under Delve:
+Debug build under Delve (port 2345):
 
 ```bash
 docker compose -f docker-compose.yaml -f docker-compose.debug.yaml up -d --build
 ```
 
-Attach a debugger to `127.0.0.1:2345`. The HTTP API remains available on port
-7540.
+The image contains `/app/http`, `/app/cobra` and `/app/worker`.
 
 ## Native development
 
-Download dependencies and build both binaries:
-
 ```bash
-go mod download
-go build -o delivery ./cmd/http
-go build -o cobra ./cmd/cobra
-```
-
-Configuration is loaded from `/config/<APP_ENV>.yaml` first and then from
-`config/<APP_ENV>.yaml`. `APP_ENV` defaults to `local`. Environment variables
-override values from the YAML file.
-
-Running the service natively requires reachable PostgreSQL, Redis, NATS, and a
-valid path in `JWT_PUBLIC_KEY_PATH`:
-
-```bash
+go build -o bin/http ./cmd/http
+go build -o bin/cobra ./cmd/cobra
+go build -o bin/worker ./cmd/worker
 APP_ENV=local go run ./cmd/http
 ```
 
 ## Configuration
 
-- `config/local.yaml` contains local-development defaults.
-- `config/prod.yaml` contains the production configuration template.
-- Environment variables use the same leaf names as the YAML settings, such as
-  `APP_PORT`, `DB_HOST`, `REDIS_HOST`, `QUEUE_HOST`, and
-  `JWT_PUBLIC_KEY_PATH`.
+Configuration is read from `/config/<APP_ENV>.yaml`, then
+`config/<APP_ENV>.yaml` (`APP_ENV` defaults to `local`); environment variables
+with the same leaf names override the file (`APP_PORT`, `DB_HOST`,
+`REDIS_HOST`, `JWT_PUBLIC_KEY_PATH`, ...). The structure is
+in `internal/config/config.go`.
 
-- `REDIS_KEY_PREFIX` is required whenever a binary uses Redis and has no
-  default: it is the root of every Redis key the service writes
-  (`<prefix>:<namespace>:...`, for example `<prefix>:tenant:domain:<host>` or
-  `<prefix>:auth:sess:<jti>`), so services sharing a Redis database do not
-  collide. Set it to a value unique to the service.
+| Section        | Keys                                                                                  |
+|----------------|---------------------------------------------------------------------------------------|
+| root           | `APP_ENV`, `SERVICE_NAME`, `APP_VERSION` (recorded with applied migrations)           |
+| `LOGGER`       | `LOG_OUTPUT`, `LOG_TYPE`, `LOG_LEVEL`, `LOG_DIR`, `LOG_FILE`                          |
+| `HTTP_SERVER`  | `APP_ADDRESS`, `APP_PORT` (8080), `APP_REQUEST_TIMEOUT`, `APP_READ_HEADER_TIMEOUT` (10s) |
+| `DATABASE`     | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `DB_MAIN_SCHEMA`               |
+| `REDIS`        | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASS`, `REDIS_DB`, `REDIS_KEY_PREFIX`              |
+| `JWT`          | `JWT_PUBLIC_KEY_PATH`, `JWT_ALGORITHM`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_ALLOWED_ROLES`, ... |
+| `TENANT_CACHE` | `TENANT_CACHE_TTL`                                                                    |
 
-Do not commit production credentials or private keys. The checked-in local
-values are development defaults only.
+`REDIS_KEY_PREFIX` has no default and is required by every binary that uses
+Redis: it is the root of every key the service writes, so services sharing a
+Redis database do not collide.
 
-## Database setup and CLI
+The checked-in values are development defaults. Do not commit production
+credentials or private keys.
 
-The Docker image contains the CLI at `/app/cobra`. Show all available commands:
+## Console commands
 
 ```bash
-docker compose exec app /app/cobra --help
+cobra --help
+cobra db migrate                 # apply pending SQL migrations
+cobra db migrate:status          # state of the migrations
+cobra db migrate:baseline        # mark migrations up to a version as applied
+cobra db migrate:diff <name>     # generate a migration from the GORM models (needs atlas)
+cobra make migration <name>      # empty migration for hand-written SQL
+cobra db automigrate             # DEV ONLY: GORM AutoMigrate + seeders
+cobra db seed                    # run the seeders
+cobra jobs:run --name <job>      # run a registered job synchronously
+cobra make domain|repository|service <Name>
+cobra hello                      # example application command
 ```
 
-Common commands:
+Every command is described once, as a `console.Command`
+(`gitlab.com/skyrix-lib/framework/cobra/console`): its metadata (use, help
+texts, arguments, flags) and a handler that receives its dependencies only
+when the command runs. Help and completion (`cobra`, `--help` of any command,
+`help ...`, `completion`) are built from the metadata: they build no
+dependency graph and connect to nothing. A command builds only the graph it
+needs, right before it runs (`cmd/cobra/console.go`):
 
-```bash
-# Run schema migrations and PostgreSQL-specific indexes
-docker compose exec app /app/cobra db automigrate
+- `make`, `db migrate*` and platform-module commands are standalone;
+  `db migrate*` connect only to PostgreSQL;
+- `db automigrate` and `db seed` build the database graph (`buildDatabase`:
+  config, logger, PostgreSQL, models, seeders);
+- `jobs:run` and the application commands build the application graph
+  (`buildApp`).
 
-# Alias for db automigrate
-docker compose exec app /app/cobra db migrate
+Framework commands come from the framework (`cobra/corecmd`); the
+application supplies only its data: GORM models and seeders for
+`db automigrate` / `db seed` in `internal/database`.
 
-# Seed required dictionary data
-docker compose exec app /app/cobra db seed
+### Adding an application command
 
-# List or run registered background jobs
-docker compose exec app /app/cobra jobs:run --help
-
-# Import delivery zones from GeoJSON/uMap FeatureCollection
-docker compose exec app /app/cobra route-zones:import \
-  /app/data/route-zones/ijevan_route_zones.geojson
-
-# Initialize EventBus scaffolding and manage transport modules
-./cobra eventbus init
-./cobra eventbus create Payment
-./cobra eventbus list
-./cobra eventbus remove Payment
-
-# Create business-domain scaffolding
-./cobra make domain Payment
-./cobra make repository Payment
-./cobra make service Payment
-```
-
-The migration command applies GORM migrations, required PostgreSQL extensions,
-and partial indexes. Delivery-zone import requires PostGIS.
-
-### Adding console commands
-
-Console commands are assembled from two independent Wire graphs:
-
-- `internal/commands.ProviderSet` contains application-specific commands;
-- `providers.CoreCommandSet` contains the commands built into the framework
-  (`db`, `jobs:run`, `make`); add GORM models and seeders for `db automigrate`
-  and `db seed` in `internal/database`.
-
-To add an application command, place it in `internal/commands`, add its
-constructor to `internal/commands/provider.go`, accept it in `NewCommands`, and
-append its Cobra command to `Commands.All`:
+Application commands live in `internal/commands`. A command is added in one
+place: write its description and list it in `commands.All`.
 
 ```go
-var ProviderSet = wire.NewSet(
-    NewHelloCommand,
-    NewImportOrdersCommand,
-    NewCommands,
-)
+// internal/commands/greet.go
+func Greet(deps *console.Graph[*Deps]) *console.Command {
+	return &console.Command{
+		Use:   "greet <name>",
+		Short: "Greet somebody",
+		Args:  cobra.ExactArgs(1),
+		Flags: func(flags *pflag.FlagSet) {
+			flags.Bool("shout", false, "Shout the greeting")
+		},
+		Run: console.With(deps, func(cmd *cobra.Command, args []string, deps *Deps) error {
+			greeting := "Hello, " + args[0] + "!"
+			if shout, _ := cmd.Flags().GetBool("shout"); shout {
+				greeting = strings.ToUpper(greeting)
+			}
+			deps.Logger.Info("greet", "name", args[0]) // deps are built only now
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), greeting)
+			return err
+		}),
+	}
+}
+
+// internal/commands/commands.go
+func All(deps *console.Graph[*Deps]) []*console.Command {
+	return []*console.Command{Hello(deps), Greet(deps)}
+}
 ```
 
-Both command graphs are connected in `cmd/cobra/wire.go`. Application
-commands must not be registered in `providers`.
+Read flag values from `cmd.Flags()` inside the handler. When the command
+needs another dependency (a repository, a domain service), add a field to
+`commands.Deps` and, if its provider set is not in `buildApp` yet, add the set
+to `cmd/cobra/wire.go`, then run `go tool wire gen ./cmd/cobra`. A command
+that needs nothing from the application uses `console.Standalone(handler)`
+instead of `console.With`.
+
+## Migrations
+
+`migrations/` holds forward-only SQL migrations in the Atlas directory format
+(`<YYYYMMDDHHMMSS>_<name>.sql`, `.notx.sql` for statements that must run
+outside a transaction), embedded into the console binary. They are applied by
+`cobra db migrate`, never by `atlas migrate apply`. `atlas.hcl` and
+`tools/schemaloader` let Atlas diff the GORM models (list every model managed
+by migrations in `tools/schemaloader/main.go`).
 
 ## HTTP endpoints
 
-System endpoints:
-
-- `GET /health` — health check
+- `GET /health` — health check of the registered dependencies (PostgreSQL)
 - `GET /metrics` — Prometheus metrics
+- `/api/v1/examples/tasks` — example domain (`POST /`, `GET /`,
+  `GET /{task_id}`, `PATCH /{task_id}/complete`), requires a bearer token
+  (see [Authentication](#authentication))
 
-Business APIs are mounted under `/api/v1`:
-
-- `/customer/delivery`
-- `/store/delivery`
-- `/delivery/admin`
-- `/superadmin/delivery`
-
-Most business routes require JWT authentication and the appropriate role or
-tenant context. Generated OpenAPI files are stored in `docs/`.
-
-Regenerate them with:
+OpenAPI files are generated into `docs/` (Swagger UI is not mounted):
 
 ```bash
-go install github.com/swaggo/swag/cmd/swag@latest
-swag init -g cmd/http/main.go -d ./ \
-  -o docs --parseDependency
+swag init -g cmd/http/main.go -o docs --parseDependency --parseInternal
 ```
-
-The application currently does not mount Swagger UI; use `docs/swagger.yaml` or
-`docs/swagger.json` with an OpenAPI viewer.
 
 ## Code generation and tests
 
-Regenerate Wire injectors after changing providers:
-
 ```bash
-go tool wire gen ./cmd/http ./cmd/cobra
-```
-
-Run the test suite:
-
-```bash
+go generate ./...                                      # Wire injectors and providers/platform_gen.go
+go tool wire gen ./cmd/http ./cmd/cobra ./cmd/worker  # Wire only
 go test ./...
 ```
 
-NATS protobuf bindings can be regenerated when `protoc` and
-`protoc-gen-go` are installed:
+Platform modules (platform drivers) are declared with `//skyrix:platform`
+comments in `providers/platform.go`; `go generate` regenerates
+`providers/platform_gen.go` with `framework/cmd/platformgen`. The template
+ships without platform modules, so `PlatformSet` is empty. EventBus (NATS) is
+connected as a platform driver: `providers/platform.go` lists the steps.
 
-```bash
-./scripts/gen-nats-proto.sh
-```
-
-## Production Compose
-
-`docker-compose.prod.yaml` expects:
-
-- `IMAGE_DELIVERY` with the published application image
-- `JWT_PUBLIC_KEY_PATH` with the host path to the public key
-- database and service values in `.env`
-- the external `skyrix-network`
-
-Start it with:
-
-```bash
-docker compose -f docker-compose.prod.yaml up -d
-```
-
-Run one-off CLI commands through the tools profile:
-
-```bash
-docker compose -f docker-compose.prod.yaml --profile tools run --rm \
-  delivery-console db migrate
-```
-
-## Repository layout
+## Layout
 
 ```text
-cmd/http/                 HTTP service entrypoint and Wire injector
-cmd/cobra/                Cobra CLI entrypoint and Wire injector
-config/                   environment-specific YAML configuration
-data/route-zones/         route-zone import data
-docs/                     generated OpenAPI files
-entrypoints/              container entrypoint scripts
-infra/go/                 local, debug, and production Dockerfiles
-infra/postgres/           PostgreSQL/PostGIS image
-internal/adapter/         external service adapters
-internal/domain/          delivery domain modules
-internal/database/        models and seeders for the framework db commands
-internal/commands/        application-specific Cobra commands
-internal/handlers/        HTTP handlers
-internal/jobs/            background jobs
-internal/router/          HTTP route composition
-internal/transport/       event transport and generated contracts
-scripts/                  development and generation scripts
-
-../engine/                framework engine (local replace during repository split)
-../kernel/                framework kernel (local replace during repository split)
-../cobra/                 reusable Cobra infrastructure
+cmd/http, cmd/cobra, cmd/worker   binaries and their Wire graphs
+config/                           YAML configuration per APP_ENV
+docs/                             generated OpenAPI files
+entrypoints/                      container entrypoint
+infra/go/                         Dockerfile and Dockerfile.debug
+internal/commands/                application console commands
+internal/config/                  configuration structure and loading
+internal/database/                models and seeders for the db commands
+internal/domain/example/          example domain
+internal/handlers/                HTTP handlers
+internal/jobs/                    background jobs
+internal/middleware/              application HTTP middleware (rate limit stub)
+internal/router/                  route composition
+migrations/                       SQL migrations
+providers/                        Wire provider sets
+tools/schemaloader/               GORM schema for Atlas
 ```
-
-## Delivery coverage and dispatch
-
-- Customer coordinates come from the Catalog event address snapshot; the
-  service does not geocode textual delivery addresses during order creation.
-- Missing or invalid coordinates produce `ADDRESS_UNRESOLVED`; valid coordinates
-  outside all active zones produce `OUT_OF_DELIVERY_ZONE`; matches produce
-  `IN_DELIVERY_ZONE` and persist the resolved zone and coordinates.
-- Automatic dispatch only batches orders with `IN_DELIVERY_ZONE` coverage and
-  groups them by delivery zone and delivery method.
-- Courier assignment belongs to a delivery batch, not directly to an order.
-
-
-## API DOCUMENTATION
-
-The API is documented using Swagger.
-
-Swagger UI:
-```text
-http://localhost:7070/swagger/index.html
-```
-
-Regenerate Swagger documentation:
-```bash
-export PATH=$PATH:$(go env GOPATH)/bin
-swag init -g cmd/http/main.go -d ./ -o docs --parseDependency
-```
-
-Note:
-- this project uses `cmd/http/main.go` as the HTTP entrypoint
-- install the Swagger generator first if `swag` is not available:
-
-```bash
-go install github.com/swaggo/swag/cmd/swag@latest
-```
-
-==================================================
-
-## CONFIGURATION
-
-Environment configuration lives in the `config/` directory.
-
-Current local configuration:
-```text
-config/local.yaml
-```
-
-Database connection settings can be modified in the configuration files.
-Add environment-specific files such as `config/prod.yaml` when production deployment configuration is introduced.
-
-==================================================
-
-## REBUILDING COMPONENTS
-
-Common rebuild/regeneration commands:
-
-```bash
-go tool wire gen ./cmd/http ./cmd/cobra
-```
-
-```bash
-export PATH=$PATH:$(go env GOPATH)/bin
-swag init -g cmd/http/main.go -d ./ -o docs --parseDependency
-```
-
-==================================================

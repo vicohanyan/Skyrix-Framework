@@ -7,9 +7,9 @@
 package main
 
 import (
-	"gitlab.com/skyrix-lib/eventbus"
-	"gitlab.com/skyrix-lib/eventbus/platform"
-	"gitlab.com/skyrix-lib/framework/engine/postgres"
+	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
+	middleware3 "gitlab.com/skyrix-lib/framework/extensions/auth/middleware"
+	"gitlab.com/skyrix-lib/framework/extensions/auth/service"
 	"gitlab.com/skyrix-lib/framework/httpserver"
 	middleware2 "gitlab.com/skyrix-lib/framework/httpserver/middleware"
 	"gitlab.com/skyrix-lib/framework/validation"
@@ -32,27 +32,17 @@ func buildHTTPApp() (*httpApp, func(), error) {
 	database := providers.ProvideDatabaseConfig(config)
 	postgresConfig := providers.ProvidePostgresOptions(database)
 	loggerInterface := providers.ProvideLogger(config)
-	db, cleanup, err := postgres.Provide(postgresConfig, loggerInterface)
+	db, cleanup, err := gormdb.Provide(postgresConfig, loggerInterface)
 	if err != nil {
 		return nil, nil, err
 	}
-	component, err := postgres.NewComponent(db)
+	component, err := gormdb.NewComponent(db)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	eventBus := &config.EventBus
-	v := platform.ProvideLogger(loggerInterface)
-	v2, cleanup2, err := eventbus.ProvideBus(eventBus, v)
+	platform, err := providers.ProvidePlatform()
 	if err != nil {
-		cleanup()
-		return nil, nil, err
-	}
-	runtime := platform.NewRuntime(v2)
-	module := platform.NewModule(runtime)
-	kernelPlatform, err := providers.ProvidePlatform(module)
-	if err != nil {
-		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
@@ -60,37 +50,36 @@ func buildHTTPApp() (*httpApp, func(), error) {
 	manyRequestsMiddleware := middleware.NewManyRequestsMiddleware()
 	recoverMiddleware := middleware2.NewRecoverMiddleware(loggerInterface)
 	gzipDecompressMiddleware := middleware2.NewGzipDecompressMiddleware(loggerInterface)
-	v3 := providers.ProvideJWTConfig(config)
-	authMiddleware := middleware.NewAuthMiddleware(loggerInterface, v3)
 	globalMiddleware := &providers.GlobalMiddleware{
 		ManyRequests:   manyRequestsMiddleware,
 		Recover:        recoverMiddleware,
 		GzipDecompress: gzipDecompressMiddleware,
-		Auth:           authMiddleware,
 	}
+	serviceConfig := providers.ProvideJWTConfig(config)
+	jwtService := service.NewJWTVerifier(loggerInterface, serviceConfig)
+	options := middleware3.OptionsFromConfig(serviceConfig)
+	authMiddleware := middleware3.NewAuthMiddleware(jwtService, loggerInterface, options)
 	noopTenantMiddleware := router.NewNoopTenantMiddleware()
 	validator := validation.NewValidator()
-	engineDatabase, err := providers.ProvideDatabaseService(db, config)
+	gormdbDatabase, err := providers.ProvideDatabaseService(db, config)
 	if err != nil {
-		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
-	taskRepository := repository.NewTaskRepository(engineDatabase)
-	createTaskUOW := unitofwork.NewCreateTaskUnitOfWork(engineDatabase, taskRepository)
+	taskRepository := repository.NewTaskRepository(gormdbDatabase)
+	createTaskUOW := unitofwork.NewCreateTaskUnitOfWork(gormdbDatabase, taskRepository)
 	taskService := services.NewTaskService(taskRepository, createTaskUOW)
 	exampleTaskHandler := handlers.NewExampleTaskHandler(loggerInterface, validator, taskService)
 	providersHandlers := &providers.Handlers{
 		ExampleTask: exampleTaskHandler,
 	}
 	healthChecks := providers.ProvideHealthChecks(component)
-	handler := router.ProvideRouter(httpServer, globalMiddleware, noopTenantMiddleware, providersHandlers, healthChecks)
-	options := providers.ProvideHTTPServerOptions(httpServer)
-	server := httpserver.NewServer(handler, options)
+	handler := router.ProvideRouter(httpServer, globalMiddleware, authMiddleware, noopTenantMiddleware, providersHandlers, healthChecks)
+	httpserverOptions := providers.ProvideHTTPServerOptions(httpServer)
+	server := httpserver.NewServer(handler, httpserverOptions)
 	host := httpserver.NewHost(server, loggerInterface)
-	mainHttpApp := newHTTPApp(component, kernelPlatform, host, loggerInterface)
+	mainHttpApp := newHTTPApp(component, platform, host, loggerInterface)
 	return mainHttpApp, func() {
-		cleanup2()
 		cleanup()
 	}, nil
 }

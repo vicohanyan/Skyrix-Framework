@@ -3,15 +3,15 @@ package repository
 import (
 	"context"
 
-	"gitlab.com/skyrix-lib/framework/engine"
+	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
 	"gitlab.com/skyrix-lib/framework/extensions/tenant/entity"
 )
 
 type TenantRepository struct {
-	DB *engine.Database
+	DB *gormdb.Database
 }
 
-func NewTenantRepository(db *engine.Database) *TenantRepository {
+func NewTenantRepository(db *gormdb.Database) *TenantRepository {
 	return &TenantRepository{DB: db}
 }
 

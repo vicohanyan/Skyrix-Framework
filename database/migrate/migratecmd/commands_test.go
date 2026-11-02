@@ -7,6 +7,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"gitlab.com/skyrix-lib/framework/cobra/console"
 	"gitlab.com/skyrix-lib/framework/database/migrate"
 )
 
@@ -28,7 +29,7 @@ func TestCommandsValidateFlagsBeforeLoadingSettings(t *testing.T) {
 		{[]string{"migrate", "--help"}, ""},
 		{[]string{"migrate:status", "--help"}, ""},
 	} {
-		root := commands.ToCobraCommand()
+		root := commands.Command().Cobra()
 		var output strings.Builder
 		root.SetOut(&output)
 		root.SetErr(&output)
@@ -47,6 +48,11 @@ func TestCommandsValidateFlagsBeforeLoadingSettings(t *testing.T) {
 	}
 	if loads != 0 {
 		t.Fatalf("settings loaded %d times, want 0", loads)
+	}
+	for _, sub := range commands.Subcommands() {
+		if sub.Needs() != console.NeedsNothing {
+			t.Fatalf("db %s needs %v, want standalone", sub.Name(), sub.Needs())
+		}
 	}
 }
 

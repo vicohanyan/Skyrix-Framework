@@ -3,7 +3,8 @@
 // "db automigrate" and "db seed".
 //
 // The application supplies only its data: the GORM models to synchronise
-// (Models) and the seeders to run (Seeders).
+// (Models) and the seeders to run (Seeders), built with the database in its
+// database graph (Deps).
 package dbcmd
 
 import (
@@ -11,8 +12,9 @@ import (
 	"errors"
 	"fmt"
 
+	"gitlab.com/skyrix-lib/framework/cobra/console"
 	"gitlab.com/skyrix-lib/framework/database/migrate/migratecmd"
-	"gitlab.com/skyrix-lib/framework/engine"
+	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
 	"gitlab.com/skyrix-lib/framework/logger"
 
 	"github.com/spf13/cobra"
@@ -36,58 +38,53 @@ func (f SeederFunc) Seed(ctx context.Context) error { return f(ctx) }
 // Seeders run in order by "db seed" and after "db automigrate".
 type Seeders []Seeder
 
-// Commands is the db command group.
-type Commands struct {
-	DB         *engine.Database
-	Logger     logger.Interface
-	Migrations *migratecmd.Commands
-	Models     Models
-	Seeders    Seeders
+// Deps are what "db automigrate" and "db seed" run with. The application
+// builds them in its database graph (console.NeedsDatabase), only when one of
+// these commands runs.
+type Deps struct {
+	DB      *gormdb.Database
+	Logger  logger.Interface
+	Models  Models
+	Seeders Seeders
 }
 
-// New returns the db command group.
-func New(
-	db *engine.Database,
-	log logger.Interface,
-	migrations *migratecmd.Commands,
-	models Models,
-	seeders Seeders,
-) *Commands {
-	return &Commands{DB: db, Logger: log, Migrations: migrations, Models: models, Seeders: seeders}
+// NewDeps returns the dependencies of db automigrate and db seed.
+func NewDeps(db *gormdb.Database, log logger.Interface, models Models, seeders Seeders) *Deps {
+	return &Deps{DB: db, Logger: log, Models: models, Seeders: seeders}
 }
 
-// ToCobraCommand returns "db" with the migration, automigrate and seed
-// subcommands.
-func (c *Commands) ToCobraCommand() *cobra.Command {
-	cmd := migratecmd.NewDBGroup()
-	if c.Migrations != nil {
-		cmd.AddCommand(c.Migrations.CobraCommands()...)
+// Command returns the "db" group: the standalone migration commands of
+// migrations (when not nil) plus "db automigrate" and "db seed", which get
+// deps when they run.
+func Command(migrations *migratecmd.Commands, deps *console.Graph[*Deps]) *console.Command {
+	var subcommands []*console.Command
+	if migrations != nil {
+		subcommands = migrations.Subcommands()
 	}
-	cmd.AddCommand(c.autoMigrateCommand(), c.seedCommand())
-	return cmd
+	return migratecmd.NewDBGroup(append(subcommands, autoMigrateCommand(deps), seedCommand(deps))...)
 }
 
 // AutoMigrate synchronises the models with GORM AutoMigrate and runs the
 // seeders.
-func (c *Commands) AutoMigrate(ctx context.Context) error {
-	if c.DB == nil {
+func (d *Deps) AutoMigrate(ctx context.Context) error {
+	if d.DB == nil {
 		return errors.New("db automigrate: database is not configured")
 	}
-	if len(c.Models) > 0 {
-		if err := c.DB.WithContext(ctx).AutoMigrate(c.Models...); err != nil {
+	if len(d.Models) > 0 {
+		if err := d.DB.WithContext(ctx).AutoMigrate(d.Models...); err != nil {
 			return fmt.Errorf("auto migrate entities: %w", err)
 		}
 	}
-	c.info("db automigrate completed", "models", len(c.Models))
-	if err := c.Seed(ctx); err != nil {
+	d.info("db automigrate completed", "models", len(d.Models))
+	if err := d.Seed(ctx); err != nil {
 		return fmt.Errorf("seed dictionaries: %w", err)
 	}
 	return nil
 }
 
 // Seed runs the seeders in order.
-func (c *Commands) Seed(ctx context.Context) error {
-	for i, seeder := range c.Seeders {
+func (d *Deps) Seed(ctx context.Context) error {
+	for i, seeder := range d.Seeders {
 		if seeder == nil {
 			continue
 		}
@@ -95,18 +92,18 @@ func (c *Commands) Seed(ctx context.Context) error {
 			return fmt.Errorf("seeder %d: %w", i, err)
 		}
 	}
-	c.info("db dictionary seed completed", "seeders", len(c.Seeders))
+	d.info("db dictionary seed completed", "seeders", len(d.Seeders))
 	return nil
 }
 
-func (c *Commands) info(msg string, fields ...any) {
-	if c.Logger != nil {
-		c.Logger.Info(msg, fields...)
+func (d *Deps) info(msg string, fields ...any) {
+	if d.Logger != nil {
+		d.Logger.Info(msg, fields...)
 	}
 }
 
-func (c *Commands) autoMigrateCommand() *cobra.Command {
-	return &cobra.Command{
+func autoMigrateCommand(deps *console.Graph[*Deps]) *console.Command {
+	return &console.Command{
 		Use:   "automigrate",
 		Short: "DEV ONLY: sync GORM entities with AutoMigrate (use db migrate in production)",
 		Long: `Synchronise the application GORM entities with gorm AutoMigrate and run the seeders.
@@ -115,25 +112,25 @@ WARNING: development only. AutoMigrate never drops or rewrites columns, is not
 recorded in skyrix_migrations and can diverge from the SQL migrations. Use
 "db migrate" for every shared, staging or production database.`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := c.AutoMigrate(cmd.Context()); err != nil {
+		Run: console.With(deps, func(cmd *cobra.Command, _ []string, deps *Deps) error {
+			if err := deps.AutoMigrate(cmd.Context()); err != nil {
 				return fmt.Errorf("migrate database: %w", err)
 			}
 			return nil
-		},
+		}),
 	}
 }
 
-func (c *Commands) seedCommand() *cobra.Command {
-	return &cobra.Command{
+func seedCommand(deps *console.Graph[*Deps]) *console.Command {
+	return &console.Command{
 		Use:   "seed",
 		Short: "Seed required dictionary data",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := c.Seed(cmd.Context()); err != nil {
+		Run: console.With(deps, func(cmd *cobra.Command, _ []string, deps *Deps) error {
+			if err := deps.Seed(cmd.Context()); err != nil {
 				return fmt.Errorf("seed database: %w", err)
 			}
 			return nil
-		},
+		}),
 	}
 }

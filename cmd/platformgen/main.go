@@ -59,11 +59,12 @@ func run(configImport string) error {
 	if err != nil {
 		return err
 	}
-	if len(directives) == 0 {
-		return fmt.Errorf("%s contains no %s directives", source, strings.TrimSpace(directivePrefix))
-	}
-	if err := resolvePackages(directives); err != nil {
-		return err
+	// Without directives the generated PlatformSet is empty but valid: the
+	// binaries get a *kernel.Platform without modules.
+	if len(directives) > 0 {
+		if err := resolvePackages(directives); err != nil {
+			return err
+		}
 	}
 	if err := validateConfigFields(directives, configImport); err != nil {
 		return err

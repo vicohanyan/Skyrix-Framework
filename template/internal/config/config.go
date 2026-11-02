@@ -23,8 +23,6 @@ type Config struct {
 	Database    `yaml:"DATABASE" env:"DATABASE"`
 	Redis       `yaml:"REDIS" env:"REDIS"`
 	JWT         `yaml:"JWT" env:"JWT"`
-	EventBus    `yaml:"QUEUE" env:"QUEUE"`
-	OAuth       `yaml:"OAUTH" env:"OAUTH"`
 	TenantCache `yaml:"TENANT_CACHE" env:"TENANT_CACHE"`
 }
 
@@ -34,6 +32,9 @@ type HttpServer struct {
 	Address string        `yaml:"APP_ADDRESS" env:"APP_ADDRESS"`
 	Port    int           `yaml:"APP_PORT" env:"APP_PORT"`
 	Timeout time.Duration `yaml:"APP_REQUEST_TIMEOUT" env:"APP_REQUEST_TIMEOUT" env-default:"5s"`
+	// ReadHeaderTimeout bounds reading the request headers (Slowloris
+	// protection); zero or negative falls back to 10s.
+	ReadHeaderTimeout time.Duration `yaml:"APP_READ_HEADER_TIMEOUT" env:"APP_READ_HEADER_TIMEOUT" env-default:"10s"`
 }
 type Database struct {
 	Host       string `yaml:"DB_HOST" env:"DB_HOST"`
@@ -58,37 +59,6 @@ type Redis struct {
 
 // JWT configures token verification (and signing for token issuers).
 type JWT = authservice.Config
-
-type EventBus struct {
-	Enabled          bool          `yaml:"QUEUE_ENABLED"           env:"QUEUE_ENABLED"           env-default:"false"`
-	Host             string        `yaml:"QUEUE_HOST"              env:"QUEUE_HOST"              env-default:"nats"`
-	Port             int           `yaml:"QUEUE_PORT"              env:"QUEUE_PORT"              env-default:"4222"`
-	ServiceName      string        `yaml:"QUEUE_NAME"              env:"QUEUE_NAME"              env-default:"skyrix-framework"`
-	User             string        `yaml:"QUEUE_USER"              env:"QUEUE_USER"`
-	Pass             string        `yaml:"QUEUE_PASS"              env:"QUEUE_PASS"`
-	RetryTimeout     time.Duration `yaml:"QUEUE_RETRY_TIMEOUT"     env:"QUEUE_RETRY_TIMEOUT"     env-default:"5s"`
-	ReconnectTimeout time.Duration `yaml:"QUEUE_RECONNECT_TIMEOUT" env:"QUEUE_RECONNECT_TIMEOUT" env-default:"2s"`
-	DLQPrefix        string        `yaml:"DLQ_PREFIX"              env:"DLQ_PREFIX"              env-default:"dlq."`
-}
-
-type Queue = EventBus
-
-func (q *EventBus) EventBusEnabled() bool             { return q != nil && q.Enabled }
-func (q *EventBus) NATSHost() string                  { return q.Host }
-func (q *EventBus) NATSPort() int                     { return q.Port }
-func (q *EventBus) NATSUser() string                  { return q.User }
-func (q *EventBus) NATSPassword() string              { return q.Pass }
-func (q *EventBus) NATSConnectionName() string        { return q.ServiceName }
-func (q *EventBus) NATSConnectTimeout() time.Duration { return q.RetryTimeout }
-func (q *EventBus) NATSReconnectWait() time.Duration  { return q.ReconnectTimeout }
-func (q *EventBus) NATSDefaultDLQPrefix() string      { return q.DLQPrefix }
-
-type OAuth struct {
-	GoogleClientID    string `yaml:"GOOGLE_CLIENT_ID" env:"OAUTH_GOOGLE_CLIENT_ID"`
-	FacebookAppID     string `yaml:"FACEBOOK_APP_ID" env:"OAUTH_FACEBOOK_APP_ID"`
-	FacebookAppSecret string `yaml:"FACEBOOK_APP_SECRET" env:"OAUTH_FACEBOOK_APP_SECRET"`
-	AppleClientID     string `yaml:"APPLE_CLIENT_ID" env:"OAUTH_APPLE_CLIENT_ID"`
-}
 
 // TenantCache configures the tenant cache. Its Redis keys live under
 // REDIS_KEY_PREFIX in the "tenant" namespace.

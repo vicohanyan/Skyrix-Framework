@@ -1,38 +1,20 @@
 package scope
 
-import (
-	"context"
-
-	"gorm.io/gorm"
-)
+import "context"
 
 type ctxKey string
 
-const (
-	ctxTenantKey ctxKey = "tenant"
-	ctxEngineKey ctxKey = "engine"
-)
+const ctxSchemaKey ctxKey = "schema"
 
-type Engine interface {
-	Main() string
-	SetSchema(*gorm.DB, string) error
+// WithSchema returns a copy of ctx carrying the request schema.
+func WithSchema(ctx context.Context, schema string) context.Context {
+	return context.WithValue(ctx, ctxSchemaKey, schema)
 }
 
-func WithTenant(ctx context.Context, tenant string) context.Context {
-	return context.WithValue(ctx, ctxTenantKey, tenant)
-}
-
-func WithEngine(ctx context.Context, engine Engine) context.Context {
-	return context.WithValue(ctx, ctxEngineKey, engine)
-}
-
-func engineFrom(ctx context.Context) Engine {
-	engine, _ := ctx.Value(ctxEngineKey).(Engine)
-	return engine
-}
-
-func TenantFrom(ctx context.Context) string {
-	if v := ctx.Value(ctxTenantKey); v != nil {
+// SchemaFrom returns the request schema stored by WithSchema, or "" when
+// ctx carries none.
+func SchemaFrom(ctx context.Context) string {
+	if v := ctx.Value(ctxSchemaKey); v != nil {
 		if s, ok := v.(string); ok {
 			return s
 		}

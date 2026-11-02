@@ -11,14 +11,12 @@ type GlobalMiddleware struct {
 	ManyRequests   *appmiddleware.ManyRequestsMiddleware
 	Recover        *frameworkmiddleware.RecoverMiddleware
 	GzipDecompress *frameworkmiddleware.GzipDecompressMiddleware
-	Auth           *appmiddleware.AuthMiddleware
 }
 
 var GlobalMiddlewareProviderSet = wire.NewSet(
 	appmiddleware.NewManyRequestsMiddleware,
 	frameworkmiddleware.NewRecoverMiddleware,
 	frameworkmiddleware.NewGzipDecompressMiddleware,
-	appmiddleware.NewAuthMiddleware,
 
 	wire.Struct(new(GlobalMiddleware), "*"),
 )

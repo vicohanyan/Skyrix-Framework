@@ -7,16 +7,9 @@
 package main
 
 import (
-	"gitlab.com/skyrix-lib/eventbus"
-	"gitlab.com/skyrix-lib/eventbus/platform"
-	"gitlab.com/skyrix-lib/framework/cobra"
-	"gitlab.com/skyrix-lib/framework/cobra/corecmd"
 	"gitlab.com/skyrix-lib/framework/database/dbcmd"
-	"gitlab.com/skyrix-lib/framework/database/migrate/migratecmd"
 	"gitlab.com/skyrix-lib/framework/engine/jobs"
-	"gitlab.com/skyrix-lib/framework/engine/jobs/jobscmd"
-	"gitlab.com/skyrix-lib/framework/engine/postgres"
-	"gitlab.com/skyrix-lib/framework/scaffold/makecmd"
+	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
 	"gitlab.com/skyrix-lib/template/internal/commands"
 	"gitlab.com/skyrix-lib/template/internal/database"
 	jobs2 "gitlab.com/skyrix-lib/template/internal/jobs"
@@ -25,70 +18,57 @@ import (
 
 // Injectors from wire.go:
 
-func buildConsoleApp() (*cobra.ConsoleApp, func(), error) {
+// buildApp builds the application graph of the console: the dependencies of
+// the application commands and the job registry. It runs only when a command
+// that needs the application graph runs (console.NeedsApp).
+func buildApp() (*appGraph, func(), error) {
 	config, err := providers.ProvideConfig()
 	if err != nil {
 		return nil, nil, err
 	}
 	loggerInterface := providers.ProvideLogger(config)
-	helloCommand := commands.NewHelloCommand()
-	commandsCommands := commands.NewCommands(helloCommand)
-	configDatabase := providers.ProvideDatabaseConfig(config)
-	postgresConfig := providers.ProvidePostgresOptions(configDatabase)
-	db, cleanup, err := postgres.Provide(postgresConfig, loggerInterface)
-	if err != nil {
-		return nil, nil, err
+	deps := &commands.Deps{
+		Config: config,
+		Logger: loggerInterface,
 	}
-	engineDatabase, err := providers.ProvideDatabaseService(db, config)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
-	}
-	settingsLoader := providers.ProvideMigrationSettings()
-	fs := providers.ProvideMigrationSource()
-	migratecmdCommands := migratecmd.New(settingsLoader, fs)
-	models := database.Models()
-	seeders := database.Seeders()
-	dbcmdCommands := dbcmd.New(engineDatabase, loggerInterface, migratecmdCommands, models, seeders)
 	runtimeRegistry := jobs.NewRegistry(loggerInterface)
 	systemPingJob := jobs2.NewSystemPingJob(loggerInterface)
 	providersJobs := &providers.Jobs{
 		SystemPingJob: systemPingJob,
 	}
 	v := providers.ProvideRegisteredJobsRegistry(runtimeRegistry, providersJobs)
-	jobsRunCommand := jobscmd.NewJobsRunCommand(v)
-	makeCommand := makecmd.NewMakeCommand()
-	corecmdCommands := corecmd.New(dbcmdCommands, jobsRunCommand, makeCommand)
-	eventBus := &config.EventBus
-	v2 := platform.ProvideLogger(loggerInterface)
-	v3, cleanup2, err := eventbus.ProvideBus(eventBus, v2)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
+	mainAppGraph := &appGraph{
+		Commands: deps,
+		Jobs:     v,
 	}
-	runtime := platform.NewRuntime(v3)
-	module := platform.NewModule(runtime)
-	kernelPlatform, err := providers.ProvidePlatform(module)
-	if err != nil {
-		cleanup2()
-		cleanup()
-		return nil, nil, err
-	}
-	commandGroups := providers.ProvideCobraCommandGroups(commandsCommands, corecmdCommands, kernelPlatform)
-	consoleApp := cobra.NewConsoleApp(loggerInterface, commandGroups)
-	return consoleApp, func() {
-		cleanup2()
-		cleanup()
+	return mainAppGraph, func() {
 	}, nil
 }
 
-// buildStandaloneCommands builds the commands that run without the application
-// container. Building them reads no configuration and opens no connection.
-func buildStandaloneCommands() *corecmd.StandaloneCommands {
-	settingsLoader := providers.ProvideMigrationSettings()
-	fs := providers.ProvideMigrationSource()
-	migratecmdCommands := migratecmd.New(settingsLoader, fs)
-	makeCommand := makecmd.NewMakeCommand()
-	standaloneCommands := corecmd.NewStandalone(migratecmdCommands, makeCommand)
-	return standaloneCommands
+// buildDatabase builds the database graph: configuration, logger, PostgreSQL,
+// models and seeders. It runs only for db automigrate and db seed
+// (console.NeedsDatabase).
+func buildDatabase() (*dbcmd.Deps, func(), error) {
+	config, err := providers.ProvideConfig()
+	if err != nil {
+		return nil, nil, err
+	}
+	configDatabase := providers.ProvideDatabaseConfig(config)
+	postgresConfig := providers.ProvidePostgresOptions(configDatabase)
+	loggerInterface := providers.ProvideLogger(config)
+	db, cleanup, err := gormdb.Provide(postgresConfig, loggerInterface)
+	if err != nil {
+		return nil, nil, err
+	}
+	gormdbDatabase, err := providers.ProvideDatabaseService(db, config)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	models := database.Models()
+	seeders := database.Seeders()
+	deps := dbcmd.NewDeps(gormdbDatabase, loggerInterface, models, seeders)
+	return deps, func() {
+		cleanup()
+	}, nil
 }

@@ -1,3 +1,6 @@
+// Package cobra holds the console capability of platform modules:
+// CommandProvider and ModuleCommands. The console host and the command
+// descriptions are in cobra/console.
 package cobra
 
 import (

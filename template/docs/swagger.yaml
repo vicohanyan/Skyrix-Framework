@@ -1,31 +1,6 @@
 basePath: /
 definitions:
-  internal_handlers.ErrorBody:
-    properties:
-      code:
-        type: string
-      details:
-        items:
-          $ref: '#/definitions/internal_handlers.FieldError'
-        type: array
-      message:
-        type: string
-      request_id:
-        type: string
-    type: object
-  internal_handlers.ErrorPayload:
-    properties:
-      error:
-        $ref: '#/definitions/internal_handlers.ErrorBody'
-    type: object
-  internal_handlers.FieldError:
-    properties:
-      field:
-        type: string
-      message:
-        type: string
-    type: object
-  skyrix_internal_domain_example_dto.CreateTaskInput:
+  gitlab_com_skyrix-lib_template_internal_domain_example_dto.CreateTaskInput:
     properties:
       description:
         maxLength: 4000
@@ -36,7 +11,7 @@ definitions:
     required:
     - title
     type: object
-  skyrix_internal_domain_example_dto.TaskResult:
+  gitlab_com_skyrix-lib_template_internal_domain_example_dto.TaskResult:
     properties:
       created_at:
         type: string
@@ -53,10 +28,35 @@ definitions:
       updated_at:
         type: string
     type: object
+  handler.ErrorBody:
+    properties:
+      code:
+        type: string
+      details:
+        items:
+          $ref: '#/definitions/handler.FieldError'
+        type: array
+      message:
+        type: string
+      request_id:
+        type: string
+    type: object
+  handler.ErrorPayload:
+    properties:
+      error:
+        $ref: '#/definitions/handler.ErrorBody'
+    type: object
+  handler.FieldError:
+    properties:
+      field:
+        type: string
+      message:
+        type: string
+    type: object
 info:
   contact: {}
-  description: HTTP API for the Skyrix Delivery service.
-  title: Skyrix Delivery API
+  description: HTTP API of an application built from the Skyrix framework template.
+  title: Skyrix Template API
   version: "1.0"
 paths:
   /api/v1/examples/tasks/:
@@ -77,12 +77,22 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/skyrix_internal_domain_example_dto.TaskResult'
+              $ref: '#/definitions/gitlab_com_skyrix-lib_template_internal_domain_example_dto.TaskResult'
             type: array
+        "401":
+          description: missing or invalid token
+          schema:
+            type: string
+        "403":
+          description: token role is not allowed
+          schema:
+            type: string
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/internal_handlers.ErrorPayload'
+            $ref: '#/definitions/handler.ErrorPayload'
+      security:
+      - BearerAuth: []
       summary: List example tasks
       tags:
       - example tasks
@@ -96,22 +106,32 @@ paths:
         name: payload
         required: true
         schema:
-          $ref: '#/definitions/skyrix_internal_domain_example_dto.CreateTaskInput'
+          $ref: '#/definitions/gitlab_com_skyrix-lib_template_internal_domain_example_dto.CreateTaskInput'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/skyrix_internal_domain_example_dto.TaskResult'
+            $ref: '#/definitions/gitlab_com_skyrix-lib_template_internal_domain_example_dto.TaskResult'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/internal_handlers.ErrorPayload'
+            $ref: '#/definitions/handler.ErrorPayload'
+        "401":
+          description: missing or invalid token
+          schema:
+            type: string
+        "403":
+          description: token role is not allowed
+          schema:
+            type: string
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/internal_handlers.ErrorPayload'
+            $ref: '#/definitions/handler.ErrorPayload'
+      security:
+      - BearerAuth: []
       summary: Create an example task
       tags:
       - example tasks
@@ -131,19 +151,29 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/skyrix_internal_domain_example_dto.TaskResult'
+            $ref: '#/definitions/gitlab_com_skyrix-lib_template_internal_domain_example_dto.TaskResult'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/internal_handlers.ErrorPayload'
+            $ref: '#/definitions/handler.ErrorPayload'
+        "401":
+          description: missing or invalid token
+          schema:
+            type: string
+        "403":
+          description: token role is not allowed
+          schema:
+            type: string
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/internal_handlers.ErrorPayload'
+            $ref: '#/definitions/handler.ErrorPayload'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/internal_handlers.ErrorPayload'
+            $ref: '#/definitions/handler.ErrorPayload'
+      security:
+      - BearerAuth: []
       summary: Get an example task
       tags:
       - example tasks
@@ -163,24 +193,40 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/skyrix_internal_domain_example_dto.TaskResult'
+            $ref: '#/definitions/gitlab_com_skyrix-lib_template_internal_domain_example_dto.TaskResult'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/internal_handlers.ErrorPayload'
+            $ref: '#/definitions/handler.ErrorPayload'
+        "401":
+          description: missing or invalid token
+          schema:
+            type: string
+        "403":
+          description: token role is not allowed
+          schema:
+            type: string
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/internal_handlers.ErrorPayload'
+            $ref: '#/definitions/handler.ErrorPayload'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/internal_handlers.ErrorPayload'
+            $ref: '#/definitions/handler.ErrorPayload'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/internal_handlers.ErrorPayload'
+            $ref: '#/definitions/handler.ErrorPayload'
+      security:
+      - BearerAuth: []
       summary: Complete an example task
       tags:
       - example tasks
+securityDefinitions:
+  BearerAuth:
+    description: 'JWT access token: "Bearer <token>".'
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

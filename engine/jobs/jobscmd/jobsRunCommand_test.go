@@ -6,11 +6,14 @@ import (
 	"errors"
 	"testing"
 
+	"gitlab.com/skyrix-lib/framework/cobra/console"
 	engineJobs "gitlab.com/skyrix-lib/framework/engine/jobs"
+
+	"github.com/spf13/cobra"
 )
 
 func TestJobsRunCommandMissingNameFails(t *testing.T) {
-	cmd := NewJobsRunCommand(&fakeJobsRegistry{}).ToCobraCommand()
+	cmd := newCommand(&fakeJobsRegistry{})
 	cmd.SetArgs([]string{})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -22,7 +25,7 @@ func TestJobsRunCommandMissingNameFails(t *testing.T) {
 
 func TestJobsRunCommandUnknownJobFails(t *testing.T) {
 	reg := &fakeJobsRegistry{runErr: errors.New("job not found")}
-	cmd := NewJobsRunCommand(reg).ToCobraCommand()
+	cmd := newCommand(reg)
 	cmd.SetArgs([]string{"--name=missing.job"})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
@@ -34,7 +37,7 @@ func TestJobsRunCommandUnknownJobFails(t *testing.T) {
 
 func TestJobsRunCommandPassesArgsToRegistry(t *testing.T) {
 	reg := &fakeJobsRegistry{}
-	cmd := NewJobsRunCommand(reg).ToCobraCommand()
+	cmd := newCommand(reg)
 	cmd.SetArgs([]string{
 		"--name=payment.reconcile",
 		`--args-json={"limit":100,"max_attempts":2,"source":"test"}`,
@@ -58,6 +61,35 @@ func TestJobsRunCommandPassesArgsToRegistry(t *testing.T) {
 	}
 	if reg.args["source"] != "test" {
 		t.Fatalf("source arg = %#v, want test", reg.args["source"])
+	}
+}
+
+func newCommand(registry engineJobs.Registry) *cobra.Command {
+	return Command(console.Value(console.NeedsApp, registry)).Cobra()
+}
+
+// The registry is built only when jobs:run runs, not for its help.
+func TestJobsRunCommandBuildsRegistryOnlyWhenItRuns(t *testing.T) {
+	builds := 0
+	registry := console.NewGraph(console.NeedsApp, func() (engineJobs.Registry, func(), error) {
+		builds++
+		return &fakeJobsRegistry{}, func() {}, nil
+	})
+	command := Command(registry)
+	if command.Needs() != console.NeedsApp {
+		t.Fatalf("jobs:run needs %v, want application", command.Needs())
+	}
+	cmd := command.Cobra()
+	cmd.SetArgs([]string{"--help"})
+	cmd.SetOut(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil || builds != 0 {
+		t.Fatalf("--help: err = %v, builds = %d", err, builds)
+	}
+	cmd = command.Cobra()
+	cmd.SetArgs([]string{"--name=x"})
+	cmd.SetOut(&bytes.Buffer{})
+	if err := cmd.Execute(); err != nil || builds != 1 {
+		t.Fatalf("run: err = %v, builds = %d", err, builds)
 	}
 }
 

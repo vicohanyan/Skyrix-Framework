@@ -1,3 +1,4 @@
+// Package jobscmd provides the "jobs:run" console command.
 package jobscmd
 
 import (
@@ -6,60 +7,56 @@ import (
 	"fmt"
 	"io"
 
+	"gitlab.com/skyrix-lib/framework/cobra/console"
 	engineJobs "gitlab.com/skyrix-lib/framework/engine/jobs"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
-type JobsRunCommand struct {
-	Registry engineJobs.Registry
-}
-
-func NewJobsRunCommand(registry engineJobs.Registry) *JobsRunCommand {
-	return &JobsRunCommand{Registry: registry}
-}
-
-func (c *JobsRunCommand) ToCobraCommand() *cobra.Command {
-	var name string
-	var argsJSON string
-	var limit int
-	var maxAttempts int
-
-	cmd := &cobra.Command{
+// Command describes "jobs:run". The job registry comes from registry, built
+// only when the command runs; it usually derives from the application
+// graph (console.NeedsApp), since jobs need the application's services.
+func Command(registry *console.Graph[engineJobs.Registry]) *console.Command {
+	return &console.Command{
 		Use:   "jobs:run",
 		Short: "Run a registered job synchronously",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if name == "" {
-				return fmt.Errorf("--name is required")
-			}
-
-			args, err := decodeJobArgs(argsJSON)
-			if err != nil {
-				return err
-			}
-			if cmd.Flags().Changed("limit") {
-				args["limit"] = limit
-			}
-			if cmd.Flags().Changed("max-attempts") {
-				args["max_attempts"] = maxAttempts
-			}
-
-			if err := c.Registry.Run(cmd.Context(), name, args); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "job failed: %s: %v\n", name, err)
-				return err
-			}
-
-			fmt.Fprintf(cmd.OutOrStdout(), "job succeeded: %s\n", name)
-			return nil
+		Flags: func(flags *pflag.FlagSet) {
+			flags.String("name", "", "Registered job name")
+			flags.String("args-json", "", "JSON object with job arguments")
+			flags.Int("limit", 0, "Job limit argument")
+			flags.Int("max-attempts", 0, "Job max_attempts argument")
 		},
+		Run: console.With(registry, run),
+	}
+}
+
+func run(cmd *cobra.Command, _ []string, registry engineJobs.Registry) error {
+	flags := cmd.Flags()
+	name, _ := flags.GetString("name")
+	argsJSON, _ := flags.GetString("args-json")
+	if name == "" {
+		return fmt.Errorf("--name is required")
 	}
 
-	cmd.Flags().StringVar(&name, "name", "", "Registered job name")
-	cmd.Flags().StringVar(&argsJSON, "args-json", "", "JSON object with job arguments")
-	cmd.Flags().IntVar(&limit, "limit", 0, "Job limit argument")
-	cmd.Flags().IntVar(&maxAttempts, "max-attempts", 0, "Job max_attempts argument")
+	args, err := decodeJobArgs(argsJSON)
+	if err != nil {
+		return err
+	}
+	if flags.Changed("limit") {
+		args["limit"], _ = flags.GetInt("limit")
+	}
+	if flags.Changed("max-attempts") {
+		args["max_attempts"], _ = flags.GetInt("max-attempts")
+	}
 
-	return cmd
+	if err := registry.Run(cmd.Context(), name, args); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "job failed: %s: %v\n", name, err)
+		return err
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "job succeeded: %s\n", name)
+	return nil
 }
 
 func decodeJobArgs(raw string) (map[string]any, error) {

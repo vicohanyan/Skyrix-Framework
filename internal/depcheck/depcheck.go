@@ -28,19 +28,56 @@ func StandardLibraryOnly(pkg Package) bool { return pkg.Standard }
 // the import chain. The test is skipped when the go command is unavailable.
 func Check(t testing.TB, root string, rule Rule) {
 	t.Helper()
-	check(t, root+"/...", func(path string) bool {
-		return path == root || strings.HasPrefix(path, root+"/")
-	}, rule)
+	check(t, root+"/...", inTree(root), rule, false)
 }
 
 // CheckPackage is like Check for the single package path; its subpackages are
 // checked as ordinary dependencies.
 func CheckPackage(t testing.TB, path string, rule Rule) {
 	t.Helper()
-	check(t, path, func(candidate string) bool { return candidate == path }, rule)
+	check(t, path, func(candidate string) bool { return candidate == path }, rule, false)
 }
 
-func check(t testing.TB, pattern string, inTree func(string) bool, rule Rule) {
+// Forbid fails the test when a package under root (root and root/...)
+// reaches a forbidden package directly or transitively, through any other
+// package, as "go list -deps" sees it. Each violation reports the import
+// chain.
+func Forbid(t testing.TB, root string, forbidden func(path string) bool) {
+	t.Helper()
+	check(t, root+"/...", inTree(root), func(pkg Package) bool { return !forbidden(pkg.ImportPath) }, true)
+}
+
+// ForbidPackage is like Forbid for the single package path; its subpackages
+// are checked as ordinary dependencies.
+func ForbidPackage(t testing.TB, path string, forbidden func(path string) bool) {
+	t.Helper()
+	check(t, path, func(candidate string) bool { return candidate == path },
+		func(pkg Package) bool { return !forbidden(pkg.ImportPath) }, true)
+}
+
+// HasPrefix returns a forbidden-path predicate matching each prefix as a
+// package path or a parent of package paths.
+func HasPrefix(prefixes ...string) func(path string) bool {
+	return func(path string) bool {
+		for _, prefix := range prefixes {
+			if path == prefix || strings.HasPrefix(path, prefix+"/") {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+func inTree(root string) func(string) bool {
+	return func(path string) bool {
+		return path == root || strings.HasPrefix(path, root+"/")
+	}
+}
+
+// check walks the imports of the packages matched by pattern. Packages
+// outside the tree that rule allows are not followed unless transitive is
+// set.
+func check(t testing.TB, pattern string, inTree func(string) bool, rule Rule, transitive bool) {
 	t.Helper()
 
 	goBin, err := exec.LookPath("go")
@@ -87,7 +124,7 @@ func check(t testing.TB, pattern string, inTree func(string) bool, rule Rule) {
 	sort.Strings(checked)
 
 	for _, pkg := range checked {
-		for _, chain := range violations(pkg, packages, inTree, rule) {
+		for _, chain := range violations(pkg, packages, inTree, rule, transitive) {
 			t.Errorf("%s imports forbidden package %s via %s",
 				pkg, chain[len(chain)-1], strings.Join(chain, " -> "))
 		}
@@ -96,7 +133,7 @@ func check(t testing.TB, pattern string, inTree func(string) bool, rule Rule) {
 
 // violations walks the import graph from start and returns the shortest import
 // chain to every reachable package outside the tree that rule rejects.
-func violations(start string, packages map[string]Package, inTree func(string) bool, rule Rule) [][]string {
+func violations(start string, packages map[string]Package, inTree func(string) bool, rule Rule, transitive bool) [][]string {
 	parent := map[string]string{start: ""}
 	queue := []string{start}
 	var result [][]string
@@ -116,6 +153,9 @@ func violations(start string, packages map[string]Package, inTree func(string) b
 				continue
 			}
 			if rule(packages[imported]) {
+				if transitive {
+					queue = append(queue, imported)
+				}
 				continue
 			}
 			var chain []string
