@@ -74,8 +74,9 @@ func inTree(root string) func(string) bool {
 	}
 }
 
-// check walks the imports of the packages matched by pattern. Packages
-// outside the tree that rule allows are not followed unless transitive is
+// check reads production Imports only: no -test, TestImports or XTestImports.
+// Boundary-test tooling (including depcheck itself) must not enter this graph.
+// Packages outside the tree that rule allows are not followed unless transitive is
 // set.
 func check(t testing.TB, pattern string, inTree func(string) bool, rule Rule, transitive bool) {
 	t.Helper()

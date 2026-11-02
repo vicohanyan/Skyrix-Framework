@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"gitlab.com/skyrix-lib/framework/config"
-	"gitlab.com/skyrix-lib/framework/internal/depcheck"
 )
 
 type options struct {
@@ -122,11 +121,6 @@ func TestConflicts(t *testing.T) {
 		}
 	}
 }
-func TestDependencyBoundary(t *testing.T) {
-	const m = "gitlab.com/skyrix-lib/framework"
-	depcheck.Forbid(t, m+"/config", depcheck.HasPrefix(m+"/engine", m+"/extensions", m+"/httpserver", m+"/cobra", m+"/database", "gitlab.com/skyrix-lib/template"))
-}
-
 func TestSafeListsAndSnapshot(t *testing.T) {
 	type settings struct {
 		Tokens []string `secret:"true"`

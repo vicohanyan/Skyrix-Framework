@@ -214,12 +214,34 @@ What a command needs follows from its runner (`console.Standalone` or
 
 ## Dependency rules
 
+The foundation is explicitly `kernel/...` (currently `kernel` and
+`kernel/jobs`), `config` (consumer-owned sections and loader), and `logger`
+(logging contract and independent slog instances). Hosts, CLI commands,
+generators, `validation` and migration utilities are not foundation merely
+because they are reusable or have their own dependency rules.
+
+Foundation production code must not reach `engine/...`, `extensions/...`,
+concrete platform drivers (including the external
+`gitlab.com/skyrix-lib/eventbus` module), or Template, directly or transitively.
+The config/logger rule also rejects hosts (`httpserver`, `cobra`, `database`),
+scaffolding and generators (`scaffold`, `cmd`), and the current concrete driver
+libraries (`github.com/jackc/pgx`, `github.com/redis/go-redis`, `gorm.io`,
+`github.com/nats-io`, including their subpackages). Add new concrete driver
+module paths to this rule when introducing them. `kernel/...` retains the
+stricter standard-library-only rule; config may use YAML and logger keeps its
+slog implementation. The config/logger checks also cover their subpackages.
+These rules do not change `config.Section` or `config:env`.
+
 The rules are checked by tests built on `internal/depcheck`, which reads the
-import graph with `go list -deps`. `go test` does not see changes of the import
+production import graph with `go list -deps` (without `-test`):
+`TestImports` and `XTestImports`, including depcheck tooling, are excluded.
+Failures name the source package and the import chain to the forbidden package.
+`go test` does not see changes of the import
 graph as test inputs, so run these tests with `-count=1`.
 
 | Rule                                                                                             | Test                                                |
 |--------------------------------------------------------------------------------------------------|-----------------------------------------------------|
+| `config` and `logger` do not reach engine, extensions, hosts, generators, concrete drivers or Template, directly or transitively | `internal/depcheck/boundaries_test.go` |
 | `kernel/...` imports only the standard library                                                   | `kernel/deps_test.go`                               |
 | `engine/...` and `kernel/...` do not reach `extensions/...`, directly or transitively            | `internal/depcheck/boundaries_test.go`              |
 | `kernel/...`, `engine`, `engine/postgres`, `engine/scope/...`, `engine/redis/...`, `engine/jobs/...` do not reach `gorm.io/...`; GORM stays in `engine/postgres/gormdb` | `internal/depcheck/boundaries_test.go` |

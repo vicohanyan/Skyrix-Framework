@@ -24,6 +24,12 @@ support v0.2.x.
 
 ### Added
 
+- Explicit foundation boundaries for `kernel/...`, `config` and `logger`:
+  retain kernel's standard-library-only rule and extend config's existing
+  transitive isolation check to logger, external EventBus and concrete driver
+  libraries. Import-chain diagnostics and regression tests distinguish
+  production dependencies from internal and external test tooling.
+
 - Standalone `config:env` via `console.Command`: explicit application sections,
   stable section/env ordering, exact `--section` filtering, types and safe default
   snapshots. Secret defaults are masked; YAML/environment, validation and Wire
