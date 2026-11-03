@@ -24,6 +24,7 @@ type Config struct {
 	Logger      `yaml:"LOGGER" env:"LOGGER"`
 	HttpServer  `yaml:"HTTP_SERVER" env:"HTTP_SERVER"`
 	Database    `yaml:"DATABASE" env:"DATABASE"`
+	Migrations  `yaml:"MIGRATIONS" env:"MIGRATIONS"`
 	Redis       `yaml:"REDIS" env:"REDIS"`
 	JWT         `yaml:"JWT" env:"JWT"`
 	TenantCache `yaml:"TENANT_CACHE" env:"TENANT_CACHE"`
@@ -39,6 +40,13 @@ type HttpServer struct {
 	// protection); zero or negative falls back to 10s.
 	ReadHeaderTimeout time.Duration `yaml:"APP_READ_HEADER_TIMEOUT" env:"APP_READ_HEADER_TIMEOUT" env-default:"10s"`
 }
+
+// Migrations configures diff scratch storage separately from the application DB.
+// Empty DevURL uses the Framework default disposable PostgreSQL database.
+type Migrations struct {
+	DevURL string `yaml:"MIGRATIONS_DEV_URL" env:"MIGRATIONS_DEV_URL" secret:"true"`
+}
+
 type Database struct {
 	Host       string `yaml:"DB_HOST" env:"DB_HOST"`
 	Port       int    `yaml:"DB_PORT" env:"DB_PORT"`
@@ -84,6 +92,7 @@ func Sections() []sections.Section {
 		{Key: "logger", Value: &Logger{}, YAMLPath: []string{"LOGGER"}, LegacyEnv: true},
 		{Key: "http", Value: &HttpServer{}, YAMLPath: []string{"HTTP_SERVER"}, LegacyEnv: true},
 		{Key: "database", Value: &Database{}, YAMLPath: []string{"DATABASE"}, LegacyEnv: true},
+		{Key: "migrations", Value: &Migrations{}, YAMLPath: []string{"MIGRATIONS"}, LegacyEnv: true},
 		{Key: "redis", Value: &Redis{}, YAMLPath: []string{"REDIS"}, LegacyEnv: true},
 		{Key: "auth", Value: &JWT{}, YAMLPath: []string{"JWT"}, LegacyEnv: true},
 		{Key: "tenant", Value: &TenantCache{}, YAMLPath: []string{"TENANT_CACHE"}, LegacyEnv: true},

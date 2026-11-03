@@ -84,3 +84,20 @@ func TestLegacySectionPrecedence(t *testing.T) {
 		t.Fatal("env did not override YAML")
 	}
 }
+
+func TestMigrationDevURLFromYAMLAndEnv(t *testing.T) {
+	cfg := &Config{source: []byte("MIGRATIONS:\n  MIGRATIONS_DEV_URL: docker://postgres/18/yaml\n")}
+	if err := cfg.LoadSection("migrations", []string{"MIGRATIONS"}, &cfg.Migrations); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Migrations.DevURL != "docker://postgres/18/yaml" {
+		t.Fatal(cfg.Migrations.DevURL)
+	}
+	t.Setenv("MIGRATIONS_DEV_URL", "docker://postgres/18/env")
+	if err := cfg.LoadSection("migrations", []string{"MIGRATIONS"}, &cfg.Migrations); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Migrations.DevURL != "docker://postgres/18/env" {
+		t.Fatal(cfg.Migrations.DevURL)
+	}
+}

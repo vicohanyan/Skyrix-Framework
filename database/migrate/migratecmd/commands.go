@@ -34,8 +34,11 @@ type Settings struct {
 	AppVersion string
 	// Logger receives runner progress; optional.
 	Logger logger.Interface
-	// AtlasEnv names the atlas.hcl env used by migrate:diff; default "local".
+	// AtlasEnv labels the generated Atlas environment; default "local".
 	AtlasEnv string
+	// AtlasDevURL is optional disposable scratch storage for migrate:diff.
+	// Empty uses atlas.DefaultDevURL, never Postgres (the application database).
+	AtlasDevURL string
 }
 
 // SettingsLoader loads settings when a command runs. On success it returns a
@@ -46,7 +49,7 @@ type SettingsLoader func() (Settings, func(), error)
 type Commands struct {
 	LoadSettings SettingsLoader
 	Source       fs.FS
-	// ProjectRoot is where atlas.hcl and the migrations directory live.
+	// ProjectRoot contains migrations/ and tools/schemaloader/.
 	ProjectRoot string
 	// Options are extra runner options, such as migrate.WithTable.
 	Options []migrate.Option
@@ -112,16 +115,16 @@ func (c *Commands) Open(ctx context.Context, options ...migrate.Option) (*migrat
 	}, nil
 }
 
-func (c *Commands) atlasEnv() (string, error) {
+func (c *Commands) atlasOptions(env string) (atlas.DiffOptions, error) {
 	settings, cleanup, err := c.LoadSettings()
 	if err != nil {
-		return "", err
+		return atlas.DiffOptions{}, err
 	}
 	defer cleanup()
-	if settings.AtlasEnv == "" {
-		return "local", nil
+	if env == "" {
+		env = settings.AtlasEnv
 	}
-	return settings.AtlasEnv, nil
+	return atlas.DiffOptions{Env: env, DevURL: settings.AtlasDevURL}, nil
 }
 
 func (c *Commands) migrateCommand() *console.Command {
@@ -247,13 +250,14 @@ func (c *Commands) diffCommand() *console.Command {
 	return &console.Command{
 		Use:   "migrate:diff <name>",
 		Short: "Generate a SQL migration from the GORM models with Atlas",
-		Long: `Run "atlas migrate diff <name> --env <env>" in the project root. Atlas compares
-the schema loaded from the application models with the migrations directory
-and writes the difference as a new migration. The env defaults to the
-application's Atlas env (APP_ENV in the template).`,
+		Long: `Generate a SQL migration from tools/schemaloader and the migrations directory.
+Atlas configuration is generated temporarily from application settings; no
+atlas.hcl is required. MIGRATIONS_DEV_URL in Template can override the disposable
+PostgreSQL development database. The application database is never used as scratch
+storage. --env overrides the generated environment label (APP_ENV in Template).`,
 		Args: cobra.ExactArgs(1),
 		Flags: func(flags *pflag.FlagSet) {
-			flags.String("env", "", "Atlas env from atlas.hcl (default: the application's Atlas env)")
+			flags.String("env", "", "Generated Atlas environment label (default: application settings)")
 		},
 		Run: console.Standalone(func(cmd *cobra.Command, args []string) error {
 			env, _ := cmd.Flags().GetString("env")
@@ -265,18 +269,16 @@ application's Atlas env (APP_ENV in the template).`,
 			if err != nil {
 				return err
 			}
-			if env == "" {
-				if env, err = c.atlasEnv(); err != nil {
-					return err
-				}
+			options, err := c.atlasOptions(env)
+			if err != nil {
+				return err
 			}
 
 			before, err := atlas.MigrationFiles(c.ProjectRoot)
 			if err != nil {
 				return err
 			}
-			if err := atlas.Run(cmd.Context(), binary, c.ProjectRoot, cmd.OutOrStdout(), cmd.ErrOrStderr(),
-				"migrate", "diff", name, "--env", env); err != nil {
+			if err := atlas.Diff(cmd.Context(), binary, c.ProjectRoot, name, options, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
 				return err
 			}
 			after, err := atlas.MigrationFiles(c.ProjectRoot)

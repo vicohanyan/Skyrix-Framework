@@ -3,6 +3,8 @@ package migratecmd
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -29,6 +31,7 @@ func TestCommandsValidateFlagsBeforeLoadingSettings(t *testing.T) {
 		{[]string{"migrate:diff", "Bad-Name"}, "lowercase"},
 		{[]string{"migrate", "--help"}, ""},
 		{[]string{"migrate:status", "--help"}, ""},
+		{[]string{"migrate:diff", "--help"}, ""},
 	} {
 		root := commands.Command().Cobra()
 		var output strings.Builder
@@ -92,24 +95,64 @@ func TestSettingsCleanupOnOpenFailure(t *testing.T) {
 	}
 }
 
-func TestSettingsCleanupAfterAtlasEnvLookup(t *testing.T) {
+func TestSettingsCleanupAfterAtlasOptionsLookup(t *testing.T) {
 	for _, configured := range []string{"", "production"} {
 		t.Run(configured, func(t *testing.T) {
 			calls := 0
 			commands := New(func() (Settings, func(), error) {
-				return Settings{AtlasEnv: configured}, func() { calls++ }, nil
+				return Settings{AtlasEnv: configured, AtlasDevURL: "docker://postgres/18/scratch"}, func() { calls++ }, nil
 			}, fstest.MapFS{})
-			env, err := commands.atlasEnv()
+			options, err := commands.atlasOptions("")
 			want := configured
-			if want == "" {
-				want = "local"
-			}
-			if err != nil || env != want {
-				t.Fatalf("atlasEnv() = %q, %v", env, err)
+
+			if err != nil || options.Env != want || options.DevURL != "docker://postgres/18/scratch" {
+				t.Fatalf("atlasOptions() = %+v, %v", options, err)
 			}
 			if calls != 1 {
 				t.Fatalf("cleanup calls = %d, want 1", calls)
 			}
 		})
+	}
+}
+
+func TestDiffLoadsConfiguredDevURLWithExplicitEnv(t *testing.T) {
+	root := t.TempDir()
+	binary := filepath.Join(t.TempDir(), "atlas")
+	script := `#!/bin/sh
+printf '%s\n' "$@" > atlas-args
+cp "${5#file://}" atlas-config
+mkdir -p migrations
+: > migrations/20261103000000_add_field.sql
+`
+	if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Dir(binary)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	loads, closes := 0, 0
+	commands := New(func() (Settings, func(), error) {
+		loads++
+		return Settings{AtlasEnv: "local", AtlasDevURL: "docker://postgres/18/configured"}, func() { closes++ }, nil
+	}, fstest.MapFS{})
+	commands.ProjectRoot = root
+	command := commands.Command().Cobra()
+	var output strings.Builder
+	command.SetOut(&output)
+	command.SetErr(&output)
+	command.SetArgs([]string{"migrate:diff", "add_field", "--env", "production"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	config, err := os.ReadFile(filepath.Join(root, "atlas-config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(config), `env "production"`) || !strings.Contains(string(config), "docker://postgres/18/configured") {
+		t.Fatal(string(config))
+	}
+	if loads != 1 || closes != 1 {
+		t.Fatalf("loads=%d closes=%d", loads, closes)
+	}
+	if !strings.Contains(output.String(), "created migrations/20261103000000_add_field.sql") {
+		t.Fatal(output.String())
 	}
 }

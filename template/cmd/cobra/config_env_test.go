@@ -22,7 +22,7 @@ func TestConfigEnvWithoutSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"APP_ENV", "LOG_LEVEL", "APP_PORT", "DB_PASS", "REDIS_KEY_PREFIX", "JWT_EXPIRE", "TENANT_CACHE_TTL"} {
+	for _, key := range []string{"APP_ENV", "LOG_LEVEL", "APP_PORT", "DB_PASS", "REDIS_KEY_PREFIX", "JWT_EXPIRE", "TENANT_CACHE_TTL", "MIGRATIONS_DEV_URL"} {
 		if !strings.Contains(output, key) {
 			t.Errorf("missing %s:\n%s", key, output)
 		}

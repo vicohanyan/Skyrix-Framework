@@ -14,6 +14,17 @@ compatibility layer for v0.2.x applications: services and modules built for
 v0.2.x must be migrated before upgrading. Modules released for v0.3.0 do not
 support v0.2.x.
 
+### Migration diff configuration
+
+- Generate a private temporary Atlas configuration for db migrate:diff, with
+  explicit project paths and cleanup on success, failure and cancellation.
+- Remove Template's required atlas.hcl. Load optional MIGRATIONS_DEV_URL from
+  application YAML/environment; keep the disposable PostgreSQL Docker default in
+  Framework. Application database credentials are never used as diff scratch.
+- Preserve APP_ENV/--env as the generated environment label. Existing custom HCL
+  files remain untouched and are ignored by the wrapper; transfer dev URL settings
+  or run Atlas directly for custom projects. Add config/CLI/cleanup regression tests.
+
 ### Scoped transactions and domain UoW scaffolding
 
 - Add gormdb.Database.WithinTransaction(ctx, func(*Database) error): checked

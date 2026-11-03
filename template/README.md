@@ -245,12 +245,37 @@ instead of `console.With`.
 
 ## Migrations
 
+Use SQL migrations in production: generate them during development with
+`cobra db migrate:diff <name>`, review and commit the SQL, then apply the
+prepared migrations during deployment with `cobra db migrate`.
+`cobra db automigrate` is intended only for local development and is not
+recommended in production: it changes the schema directly without recording
+SQL migration history. Avoid mixing both approaches on the same database.
+
 `migrations/` holds forward-only SQL migrations in the Atlas directory format
 (`<YYYYMMDDHHMMSS>_<name>.sql`, `.notx.sql` for statements that must run
 outside a transaction), embedded into the console binary. They are applied by
-`cobra db migrate`, never by `atlas migrate apply`. `atlas.hcl` and
-`tools/schemaloader` let Atlas diff the GORM models (list every model managed
-by migrations in `tools/schemaloader/main.go`).
+`cobra db migrate`, never by `atlas migrate apply`. `cobra db migrate:diff <name>`
+loads the GORM models through `tools/schemaloader` (list every model managed by
+migrations in `tools/schemaloader/main.go`). The command creates a private temporary
+Atlas config and removes it on completion; no project `atlas.hcl` is needed.
+
+The Framework default scratch database is disposable PostgreSQL 18 in Docker.
+Override it through the existing application configuration when needed:
+
+```yaml
+MIGRATIONS:
+  MIGRATIONS_DEV_URL: "docker://postgres/18/dev?search_path=public"
+```
+
+The `MIGRATIONS_DEV_URL` environment variable overrides YAML. Leave it unset to use
+the Framework default; it is independent of DATABASE connection credentials and
+must identify disposable scratch storage, never an application database. APP_ENV
+(and the optional `--env` flag) labels the generated environment; separate HCL
+environments are unnecessary. Atlas CLI and Docker (for the default dev URL) must
+be available when running diff. Existing custom atlas.hcl files are not read or
+modified by this command; transfer their dev setting to MIGRATIONS_DEV_URL.
+Advanced custom Atlas projects can still be run directly through the Atlas CLI.
 
 ## HTTP endpoints
 

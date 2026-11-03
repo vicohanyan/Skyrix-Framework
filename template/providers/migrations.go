@@ -21,12 +21,16 @@ func ProvideMigrationSettings() migratecmd.SettingsLoader {
 		if err != nil {
 			return migratecmd.Settings{}, nil, err
 		}
+		if err := cfg.LoadSection("migrations", []string{"MIGRATIONS"}, &cfg.Migrations); err != nil {
+			return migratecmd.Settings{}, nil, err
+		}
 		log, cleanup := logger.NewLogger(cfg.Logger)
 		return migratecmd.Settings{
-			Postgres:   ProvidePostgresOptions(database),
-			AppVersion: cfg.Version,
-			Logger:     log,
-			AtlasEnv:   cfg.Env,
+			Postgres:    ProvidePostgresOptions(database),
+			AppVersion:  cfg.Version,
+			Logger:      log,
+			AtlasEnv:    cfg.Env,
+			AtlasDevURL: cfg.Migrations.DevURL,
 		}, cleanup, nil
 	}
 }

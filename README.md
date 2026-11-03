@@ -476,3 +476,13 @@ cannot enforce scope if a caller replaces context; migrate to the wrapper API.
 Integration tests use only `SKYRIX_TEST_POSTGRES_DSN`, which must identify a
 **dedicated test database** with CREATE/DROP SCHEMA permission. Without it they
 skip; recording-driver tests do not establish real PostgreSQL pool isolation.
+
+Model-based migration diffs (`cobra db migrate:diff <name>`) generate a private
+temporary Atlas config; no project atlas.hcl is required. Template reads optional
+MIGRATIONS_DEV_URL from its MIGRATIONS config section or environment. Without an
+override, Framework uses disposable PostgreSQL 18 in Docker. This scratch storage
+is separate from the application's DATABASE configuration. The temp file is
+removed on success, error or cancellation. Existing project Atlas configs are
+ignored and preserved; migrate their dev URL to MIGRATIONS_DEV_URL, or invoke
+Atlas directly for custom workflows. `--env` labels the generated environment.
+Atlas CLI must be installed; the default scratch URL also requires Docker.

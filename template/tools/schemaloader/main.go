@@ -1,5 +1,5 @@
 // Command schemaloader prints the desired database schema of the GORM models
-// as SQL for Atlas (see atlas.hcl). Add every model that is managed by SQL
+// as SQL for db migrate:diff. Add every model that is managed by SQL
 // migrations to the list below.
 package main
 

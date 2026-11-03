@@ -323,7 +323,14 @@ What a command needs follows from its runner (`console.Standalone` or
 - Commands: `db migrate` (`--steps`, `--to`), `db migrate:status`,
   `db migrate:baseline <version>`, `db migrate:diff <name>` (generates a
   migration from the GORM models with `atlas migrate diff`, needs the `atlas`
-  binary and `atlas.hcl`), `make migration <name>`. Migrations are applied by
+  binary), `make migration <name>`. Diff writes a private temporary HCL config,
+  invokes Atlas with an explicit --config and removes the file afterwards.
+  Application settings supply AtlasEnv and optional AtlasDevURL; Template loads
+  MIGRATIONS_DEV_URL from the MIGRATIONS section/environment. The default dev URL
+  lives once in Framework and uses disposable PostgreSQL 18 in Docker. Main DB
+  credentials are not copied into the Atlas config. Model loader and migration
+  paths follow project conventions; custom project HCL is ignored and preserved.
+  Migrations are applied by
   `db migrate`, never by `atlas migrate apply`.
 - `db automigrate` (GORM AutoMigrate + seeders) is for development only and is
   not recorded in `skyrix_migrations`.
