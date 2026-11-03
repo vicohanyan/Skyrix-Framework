@@ -48,6 +48,7 @@ func TestPlatformDriverSelection(t *testing.T) {
 		if name == "go.mod" {
 			source = strings.Replace(source, "module gitlab.com/skyrix-lib/template", "module example.com/selection", 1)
 			source = strings.Replace(source, "replace gitlab.com/skyrix-lib/framework => ..", "replace gitlab.com/skyrix-lib/framework => "+filepath.Dir(template), 1)
+			source = strings.Replace(source, "replace gitlab.com/skyrix-lib/auth => ../../skyrix-auth-lib", "replace gitlab.com/skyrix-lib/auth => "+filepath.Join(filepath.Dir(template), "..", "skyrix-auth-lib"), 1)
 		}
 		write(name, source)
 	}
@@ -154,24 +155,39 @@ func main(){
 `)
 	}
 
+	authProviders, err := os.ReadFile(filepath.Join(template, "providers/auth.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	write("providers/auth.go", string(authProviders))
 	write("cmd/jwt/wire.go", `//go:build wireinject
 package main
 import (
  "github.com/goforj/wire"
- "gitlab.com/skyrix-lib/framework/extensions/auth/service"
+ "gitlab.com/skyrix-lib/auth/service"
+ "gitlab.com/skyrix-lib/auth/contracts"
+ "gitlab.com/skyrix-lib/auth/middleware"
+ "github.com/redis/go-redis/v9"
+ engineredis "gitlab.com/skyrix-lib/framework/engine/redis"
+ "example.com/selection/providers"
 )
-func verifier(cfg *service.Config)(*service.JWTService,func(),error){wire.Build(newResource,newLogger,service.NewJWTVerifier);return nil,nil,nil}
-func signer(cfg *service.Config)(*service.JWTService,func(),error){wire.Build(newResource,newLogger,blacklist,sessions,service.NewJWTService);return nil,nil,nil}
+func legacy(cfg *service.Config, client *redis.Client, root engineredis.Keyspace)(*middleware.AuthMiddleware,func(),error){wire.Build(newResource,newLogger,providers.AuthProviderSet);return nil,nil,nil}
+func revoking(cfg *service.Config, client *redis.Client, root engineredis.Keyspace)(*middleware.AuthMiddleware,func(),error){wire.Build(newResource,newLogger,providers.AuthRevocationSet);return nil,nil,nil}
+func revoker(cfg *service.Config,checker contracts.RevocationChecker)(*service.Validator,func(),error){wire.Build(newResource,newLogger,service.NewRevokingValidator);return nil,nil,nil}
+func verifier(cfg *service.Config)(*service.Validator,func(),error){wire.Build(newResource,newLogger,service.NewValidator);return nil,nil,nil}
+func signer(cfg *service.Config)(*service.Signer,func(),error){wire.Build(newResource,newLogger,providers.AuthSignerSet);return nil,nil,nil}
 `)
 	write("cmd/jwt/main.go", `package main
 import (
  "errors"
+ "context"
  "os"
  "strings"
- "gitlab.com/skyrix-lib/framework/extensions/auth/contracts"
- "gitlab.com/skyrix-lib/framework/extensions/auth/service"
+ "gitlab.com/skyrix-lib/auth/service"
  "gitlab.com/skyrix-lib/framework/logger"
 )
+type checker struct{}
+func(checker) IsRevoked(context.Context,string,string)(bool,error){return false,nil}
 var events []string
 type resource struct{}
 func newResource()(*resource,func()){events=append(events,"resource");return &resource{},func(){events=append(events,"close-resource")}}
@@ -182,15 +198,17 @@ func(noop) Warn(string,...interface{}){}
 func(noop) Info(string,...interface{}){}
 func(noop) Debug(string,...interface{}){}
 func(noop) With(...interface{})logger.Interface{return noop{}}
-func blacklist()contracts.TokenBlacklist{return nil}
-func sessions()contracts.SessionStore{return nil}
 func main(){
- for _,build:=range []func(*service.Config)(*service.JWTService,func(),error){verifier,signer}{
-  events=nil
-  value,cleanup,err:=build(&service.Config{PublicKeyPath:"absent-public.pem",PrivateKeyPath:"absent-private.pem"})
-  if value!=nil||cleanup!=nil||!errors.Is(err,os.ErrNotExist){panic("constructor did not propagate error")}
+ check:=func(isNil bool,cleanup func(),err error){
+  if !isNil||cleanup!=nil||!errors.Is(err,os.ErrNotExist){panic("constructor did not propagate error")}
   if strings.Join(events,",")!="resource,logger,close-logger,close-resource"{panic(strings.Join(events,","))}
  }
+ cfg:=&service.Config{Algorithm:"RS256",PublicKeyPath:"absent-public.pem",PrivateKeyPath:"absent-private.pem"}
+ value,cleanup,err:=verifier(cfg);check(value==nil,cleanup,err)
+ events=nil
+ signed,cleanup,err:=signer(cfg);check(signed==nil,cleanup,err)
+ events=nil
+ revoked,cleanup,err:=revoker(cfg,checker{});check(revoked==nil,cleanup,err)
 }
 `)
 	generator := filepath.Join(dir, "platformgen")

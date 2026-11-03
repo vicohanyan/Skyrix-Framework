@@ -7,9 +7,9 @@
 package main
 
 import (
+	middleware3 "gitlab.com/skyrix-lib/auth/middleware"
+	"gitlab.com/skyrix-lib/auth/service"
 	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
-	middleware3 "gitlab.com/skyrix-lib/framework/extensions/auth/middleware"
-	"gitlab.com/skyrix-lib/framework/extensions/auth/service"
 	"gitlab.com/skyrix-lib/framework/httpserver"
 	middleware2 "gitlab.com/skyrix-lib/framework/httpserver/middleware"
 	"gitlab.com/skyrix-lib/framework/validation"
@@ -72,16 +72,16 @@ func buildHTTPApp() (*httpApp, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	jwtService, err := service.NewJWTVerifier(loggerInterface, serviceConfig)
+	validator, err := service.NewValidator(loggerInterface, serviceConfig)
 	if err != nil {
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
 	options := middleware3.OptionsFromConfig(serviceConfig)
-	authMiddleware := middleware3.NewAuthMiddleware(jwtService, loggerInterface, options)
+	authMiddleware := middleware3.NewAuthMiddleware(validator, loggerInterface, options)
 	noopTenantMiddleware := router.NewNoopTenantMiddleware()
-	validator := validation.NewValidator()
+	validationValidator := validation.NewValidator()
 	gormdbDatabase, err := providers.ProvideDatabaseService(db, database)
 	if err != nil {
 		cleanup2()
@@ -91,7 +91,7 @@ func buildHTTPApp() (*httpApp, func(), error) {
 	taskRepository := repository.NewTaskRepository(gormdbDatabase)
 	createTaskUOW := unitofwork.NewCreateTaskUnitOfWork(gormdbDatabase, taskRepository)
 	taskService := services.NewTaskService(taskRepository, createTaskUOW)
-	exampleTaskHandler := handlers.NewExampleTaskHandler(loggerInterface, validator, taskService)
+	exampleTaskHandler := handlers.NewExampleTaskHandler(loggerInterface, validationValidator, taskService)
 	providersHandlers := &providers.Handlers{
 		ExampleTask: exampleTaskHandler,
 	}

@@ -3,7 +3,7 @@ package router
 import (
 	"net/http"
 
-	authmiddleware "gitlab.com/skyrix-lib/framework/extensions/auth/middleware"
+	authmiddleware "gitlab.com/skyrix-lib/auth/middleware"
 	"gitlab.com/skyrix-lib/framework/httpserver"
 	"gitlab.com/skyrix-lib/template/internal/config"
 	"gitlab.com/skyrix-lib/template/providers"

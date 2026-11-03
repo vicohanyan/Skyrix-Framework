@@ -37,7 +37,7 @@ JWT:
   JWT_ISSUER: skyrix-auth
   JWT_AUDIENCE: ""
   # Token roles accepted by the framework auth middleware
-  # (extensions/auth/middleware). Empty accepts every role of a valid token.
+  # (gitlab.com/skyrix-lib/auth/middleware). Empty accepts every role of a valid token.
   # Example: JWT_ALLOWED_ROLES: [customer, admin]
   # or JWT_ALLOWED_ROLES=customer,admin in the environment.
   JWT_ALLOWED_ROLES: []

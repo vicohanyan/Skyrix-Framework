@@ -13,6 +13,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/swaggo/swag v1.16.6
+	gitlab.com/skyrix-lib/auth v0.0.0
 	gitlab.com/skyrix-lib/framework v0.0.0
 	gorm.io/gorm v1.31.2
 )
@@ -130,3 +131,6 @@ require (
 replace gitlab.com/skyrix-lib/framework => ..
 
 tool github.com/goforj/wire/cmd/wire
+
+// Local development only; auth v0.0.0 is not a published release.
+replace gitlab.com/skyrix-lib/auth => ../../skyrix-auth-lib

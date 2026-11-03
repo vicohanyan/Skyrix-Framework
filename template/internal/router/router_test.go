@@ -6,14 +6,18 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
-	authmiddleware "gitlab.com/skyrix-lib/framework/extensions/auth/middleware"
-	"gitlab.com/skyrix-lib/framework/extensions/auth/security"
-	authservice "gitlab.com/skyrix-lib/framework/extensions/auth/service"
+	authmiddleware "gitlab.com/skyrix-lib/auth/middleware"
+	"gitlab.com/skyrix-lib/auth/security"
+	authservice "gitlab.com/skyrix-lib/auth/service"
 	frameworkmiddleware "gitlab.com/skyrix-lib/framework/httpserver/middleware"
 	"gitlab.com/skyrix-lib/framework/validation"
 	"gitlab.com/skyrix-lib/template/internal/config"
@@ -62,7 +66,15 @@ func TestRoutesRequireToken(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			jwtConfig := &config.JWT{Algorithm: "RS256", AllowedRoles: test.allowedRoles}
-			jwtService := &authservice.JWTService{PublicKey: &key.PublicKey, JWTConfig: jwtConfig, Logger: noopLogger{}}
+			path := filepath.Join(t.TempDir(), "public.pem")
+			if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "RSA PUBLIC KEY", Bytes: x509.MarshalPKCS1PublicKey(&key.PublicKey)}), 0600); err != nil {
+				t.Fatal(err)
+			}
+			jwtConfig.PublicKeyPath = path
+			jwtService, err := authservice.NewValidator(noopLogger{}, jwtConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
 			auth := authmiddleware.NewAuthMiddleware(jwtService, noopLogger{}, authmiddleware.OptionsFromConfig(jwtConfig))
 			handler := InitRouter(
 				&config.HttpServer{Timeout: 5 * time.Second},

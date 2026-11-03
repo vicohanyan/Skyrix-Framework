@@ -20,7 +20,7 @@ uses the framework through `replace gitlab.com/skyrix-lib/framework => ..`.
 ```text
 template (copied)     cmd/http · cmd/cobra · cmd/worker · providers · internal/domain/...
                           │ imports
-extensions            extensions/auth · extensions/tenant
+extensions            extensions/tenant · external Auth (application composition)
                           │
 hosts                 httpserver · cobra/console (+ corecmd) · database/dbcmd, migrate
                           │
@@ -102,12 +102,11 @@ waits for a signal and stops). A job scheduler and a gRPC host are
 Optional packages plugged in by the application; the engine and the kernel do
 not know them.
 
-- `extensions/auth`: `contracts` (store interfaces), `context` (claims in
-  context), `middleware` (bearer-token middleware, roles from
-  `JWT_ALLOWED_ROLES`), `security` (claims, password hashing), `service`
-  (`Config`, JWT signing and verification), `storage` (passport cache, token
-  blacklist, sessions, refresh tokens on Redis under the `auth` key
-  namespace).
+- Authentication is the separate `gitlab.com/skyrix-lib/auth` module. Its
+  `service.Signer` needs a private RSA key, `service.Validator` needs a public
+  RSA key, and `revocation/redis` optionally implements access-token JTI
+  revocation. Legacy full-token blacklist, live sessions, passport and refresh
+  stores remain separate. Template composes it; framework must not import it.
 - `extensions/tenant`: `entity.Tenant` (a `scope.Main` model), `repository`
   and `service` (in-memory and Redis cache), `schemaResolver` (by header or
   domain), `middleware` (`TenantMiddleware` resolves the schema and stores it
@@ -209,9 +208,10 @@ of JWT constructors for the new error result. Its sources are unavailable here,
 so no external changes or live NATS checks were made. Two local test drivers
 exercise the contract through generated independent Wire graphs instead.
 
-`NewJWTVerifier` and `NewJWTService` return `(*JWTService, error)` for key-loading
-failures (with wrapped causes). Wire cleans up already acquired resources on
-these errors; signing algorithms, claims and verification behavior are unchanged.
+External Auth `NewSigner`, `NewValidator` and `NewRevokingValidator` return
+errors for invalid configuration/key loading, preserving causes. Wire cleans up
+already acquired resources. Signer assigns a fresh JTI; the revoking validator
+checks it only after signature/claims validation. Legacy policies are explicit.
 
 ## Binaries and Wire graphs (template)
 

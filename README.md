@@ -11,8 +11,9 @@ It is a library: services import it. It provides
 - hosts — the HTTP server (`httpserver`), the Cobra console (`cobra/console`,
   `cobra/corecmd`, module commands in `cobra`) and the database commands with the SQL migration runner
   (`database/dbcmd`, `database/migrate`);
-- extensions — `extensions/auth` (JWT, sessions, token stores) and
-  `extensions/tenant` (schema-per-tenant resolution);
+- extensions — `extensions/tenant` (schema-per-tenant resolution);
+- optional authentication — the separate `gitlab.com/skyrix-lib/auth` library,
+  composed by Template; framework does not import Auth;
 - tooling — `cmd/platformgen`, `scaffold/makecmd`, `logger`, `validation`.
 
 New services start from the application template in [`template/`](template/),
@@ -284,8 +285,9 @@ Driver `cobra.CommandFactory` now returns `*console.Command`. Metadata factories
 must work on zero-value modules and perform no I/O; bind a lazy injector with
 `console.With(graph, handler)` and close that graph in the console owner. Graphs
 and resources are created only for execution, including cleanup on build errors.
-JWT constructors now return `(*JWTService, error)`; callers must handle errors.
-Token signing and validation rules are unchanged.
+Auth now lives in `gitlab.com/skyrix-lib/auth`. Its separate Signer and Validator
+constructors return errors; callers must handle them. Each signed access token
+receives a fresh JTI. Revocation is explicitly enabled by the application.
 
 External EventBus sources were not modified or integration-tested. Its platform
 package needs the manifest above, a concrete typed Config and fresh NewConfig,
@@ -384,3 +386,34 @@ Write failures roll back only the operation's files, restoring previous contents
 and modes and removing only newly created empty directories. External edits
 detected while publishing/rolling back are preserved and reported. Failed Atlas
 hashing also restores the previous atlas.sum and removes the new migration.
+
+## Local Auth library
+
+Auth lives in the separate local module `gitlab.com/skyrix-lib/auth`, currently
+at `/var/www/skyrix-auth-lib`. Framework has no dependency on it; Auth uses the
+public `logger` and, in Redis adapters only, `engine/redis` packages.
+Template owns configuration sections, provider sets and Wire composition.
+See [Template authentication](template/README.md#authentication).
+
+Use an external workspace rather than changing the checked-in `go.work`:
+
+```go
+go 1.27
+
+use (
+    /var/www/skyrix-framework
+    /var/www/skyrix-framework/template
+    /var/www/skyrix-auth-lib
+)
+```
+
+Save it outside the modules, for example `/tmp/skyrix-auth-check/go.work`, and
+set `GOWORK` to its absolute path for tests, vet, builds and Wire. Run checks
+from each module separately: framework's `./...` does not include Template or
+Auth. See the Auth README for its API and Redis adapter.
+
+The local `v0.0.0` requirements for Auth/framework are technical placeholders,
+not published releases. Relative `replace` directives support this local layout;
+fixture modules rewrite those paths to absolute paths. `GOWORK=off` with local
+replacements is not evidence of a standalone build from published dependencies.
+No Auth repository or release has been published by this extraction.

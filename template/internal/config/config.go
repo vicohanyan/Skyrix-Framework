@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	authservice "gitlab.com/skyrix-lib/framework/extensions/auth/service"
+	authservice "gitlab.com/skyrix-lib/auth/service"
 	logging "gitlab.com/skyrix-lib/framework/logger"
 
 	sections "gitlab.com/skyrix-lib/framework/config"

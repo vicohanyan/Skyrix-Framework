@@ -14,6 +14,21 @@ compatibility layer for v0.2.x applications: services and modules built for
 v0.2.x must be migrated before upgrading. Modules released for v0.3.0 do not
 support v0.2.x.
 
+### Local Auth extraction
+
+- Move `extensions/auth` and its tests to the local `gitlab.com/skyrix-lib/auth`
+  module at `/var/www/skyrix-auth-lib`; no forwarding package or framework Auth
+  dependency remains. Template owns providers, config sections and Wire graphs.
+- Replace the combined JWT service with independent Signer/Validator contracts.
+  Signing loads only a private RSA key; stateless validation needs only a public
+  key. Keep constructor errors, logger.Interface, Wire cleanup and existing claims.
+- Add opt-in JTI revocation with a separate Redis adapter, application/issuer
+  isolation, authenticated lookup and atomic non-shortening expiry. Each signed
+  access token receives a fresh JTI. Legacy blacklist/sessions are explicitly
+  composed and keep their previous semantics; refresh rotation is unchanged.
+- Use an external workspace and documented local v0.0.0 placeholders, not
+  fabricated published versions. Existing services and EventBus are unchanged.
+
 ### Scaffolding generators
 
 - Complete standalone make domain/entity/repository/service/handler/command

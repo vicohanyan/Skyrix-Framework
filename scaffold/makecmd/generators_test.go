@@ -472,6 +472,7 @@ func copyTemplate(t *testing.T) (string, string) {
 		}
 		if relative == "go.mod" {
 			data = []byte(strings.ReplaceAll(string(data), "replace gitlab.com/skyrix-lib/framework => ..", "replace gitlab.com/skyrix-lib/framework => "+framework))
+			data = []byte(strings.ReplaceAll(string(data), "replace gitlab.com/skyrix-lib/auth => ../../skyrix-auth-lib", "replace gitlab.com/skyrix-lib/auth => "+filepath.Join(framework, "..", "skyrix-auth-lib")))
 		}
 		writeProject(t, root, relative, string(data))
 		return nil

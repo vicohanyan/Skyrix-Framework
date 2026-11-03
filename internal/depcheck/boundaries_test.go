@@ -50,6 +50,7 @@ func TestGORMStaysInGormdb(t *testing.T) {
 var foundationForbidden = depcheck.HasPrefix(
 	module+"/engine",
 	module+"/extensions",
+	"gitlab.com/skyrix-lib/auth",
 	module+"/httpserver",
 	module+"/cobra",
 	module+"/database",
@@ -98,4 +99,8 @@ func TestFoundationForbiddenPaths(t *testing.T) {
 			t.Errorf("unexpected forbidden path %s", path)
 		}
 	}
+}
+
+func TestFrameworkDoesNotImportAuth(t *testing.T) {
+	depcheck.Forbid(t, module, depcheck.HasPrefix("gitlab.com/skyrix-lib/auth"))
 }

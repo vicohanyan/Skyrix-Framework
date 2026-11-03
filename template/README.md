@@ -44,8 +44,8 @@ middleware, and add its lifecycle component to the binary's runtime.
 
 ## Authentication
 
-The HTTP binary protects the API with the framework bearer-token middleware
-(`extensions/auth/middleware`), wired by `providers.AuthVerifierSet`:
+The HTTP binary protects the API with the external Auth library middleware
+(`gitlab.com/skyrix-lib/auth/middleware`), wired by `providers.AuthVerifierSet`:
 
 - every route under `/api/v1` (the example routes) requires
   `Authorization: Bearer <JWT>` (the scheme is case-insensitive: `bearer`
@@ -62,10 +62,42 @@ The HTTP binary protects the API with the framework bearer-token middleware
     JWT_ALLOWED_ROLES: [customer, admin]   # or JWT_ALLOWED_ROLES=customer,admin
   ```
 
-The handlers read the claims with `extensions/auth/context`.
-`AuthVerifierSet` checks only the token itself; to also reject blacklisted
-tokens and tokens without a session, use `providers.AuthProviderSet` instead
-(it needs `RedisSet`).
+The handlers read the claims with `gitlab.com/skyrix-lib/auth/context`.
+`AuthVerifierSet` constructs `service.NewValidator` and checks only the token:
+no Redis or private key is required. `AuthSignerSet` constructs `NewSigner`
+with only the private key. All constructors return errors; Wire preserves
+cleanup of already constructed resources. Both use `logger.Interface`.
+
+For access-token JTI revocation, replace `AuthVerifierSet` with
+`AuthRevocationSet` and include `RedisSet`. Add its Redis lifecycle component
+to the binary's runtime. The application owns the Redis client and its cleanup.
+`REDIS_KEY_PREFIX` must explicitly identify the application/revocation domain;
+issuer and JTI are separately hashed under `<prefix>:auth:revoked`. Issuers and
+validators sharing a revocation domain must use the same Redis database/prefix.
+Revocation storage is called only after signature and claims verification.
+Storage errors reject the request. Repeated revocation cannot shorten the expiry.
+
+The alternative `AuthProviderSet` explicitly selects **legacy** full-token
+blacklist and live-JTI sessions (requires `RedisSet`). A nonempty JTI must exist
+in the session allowlist; an empty JTI skips that old check. This is distinct
+from JTI revocation, where a missing entry means the token is allowed and a
+missing JTI is rejected. Choose one validation set in a graph. The signer always
+assigns a fresh access-token JTI, replacing a caller-supplied ID; when using the
+legacy allowlist, save the actual signed token's JTI, not `NewClaims`' input ID.
+
+Refresh tokens retain their existing Redis layout and atomic owner-checked Lua
+rotation. Access revocation does not consume, rotate or revoke refresh tokens.
+Claims, roles, YAML/env names and `config.Section{Key:"auth", YAMLPath:[]string{"JWT"},
+LegacyEnv:true}` integration are unchanged. No platform module is registered.
+
+Local development uses `/var/www/skyrix-auth-lib` and the external workspace
+shown in the [framework README](../README.md#local-auth-library). Auth and
+framework `v0.0.0` requirements are local placeholders resolved by workspace or
+local replacements; they are not published releases. The existing framework
+`go.work` is unchanged. Docker's current framework-only build context does not
+include the sibling Auth directory; building that image requires a separately
+adapted context or real published dependencies. The extraction checks Go builds,
+not a Docker deployment.
 
 ## Running with Docker
 
@@ -276,8 +308,9 @@ never run go get/tidy or install tools. External EventBus needs the new driver
 contract before it can be added; required changes are in the framework
 [ARCHITECTURE.md](../ARCHITECTURE.md#platform-modules).
 
-JWT constructors now return `(*JWTService, error)`. Generated Wire propagates key
-loading errors and cleans up resources; signing/verification rules are unchanged.
+External Auth Signer/Validator constructors return errors. Generated Wire
+propagates key-loading failures and cleans up acquired resources. Signer assigns
+a fresh JTI; access revocation is opt-in.
 
 The existing providers and domain layout is unchanged: several sets can share
 one provider file, and domains keep their own `ProviderSet`. A driver imported
