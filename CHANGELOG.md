@@ -14,6 +14,33 @@ compatibility layer for v0.2.x applications: services and modules built for
 v0.2.x must be migrated before upgrading. Modules released for v0.3.0 do not
 support v0.2.x.
 
+### Atlas is optional: hand-written SQL migrations without the Atlas CLI
+
+- `make migration` no longer needs the Atlas CLI, an Atlas account or a
+  database: it verifies and updates `migrations/atlas.sum` with the official
+  Atlas Go library (`ariga.io/atlas/sql/migrate` v1.3.0, the format of
+  `atlas migrate hash`). The rules are unchanged: an empty directory gets
+  `atlas.sum` with the first migration; with existing SQL files a missing or
+  mismatching `atlas.sum` is an error before anything is written.
+- Add `db migrate:hash`: recomputes `atlas.sum` after editing SQL by hand
+  (`atlas.Workspace.Rehash`). It needs no Atlas CLI, database settings or Wire
+  graph, never changes SQL files, replaces `atlas.sum` atomically, rejects
+  invalid migration file names and concurrent changes, and leaves an empty
+  directory without `atlas.sum`. Checksum errors now point to it.
+- `db migrate:diff` stays the optional Atlas CLI integration (temporary
+  config, private copy of `migrations/`, checksum verification, all-or-nothing
+  publication). It now runs only `atlas migrate diff`; the checksum before
+  and after is computed by the library. Without the CLI it fails before
+  loading settings and names the manual process.
+- The runner (`db migrate`, `migrate:status`, `migrate:baseline`) is
+  unchanged and does not depend on Atlas.
+- **Breaking:** `makecmd.MakeCommand.LookupAtlas`, `atlas.Hash` and the
+  `binary`/writer parameters of `Workspace.Verify` are removed;
+  `Workspace.Hash` is replaced by `Workspace.Sum`, and `atlas.HashCommand` is
+  now `"db migrate:hash"`. `atlastest` fakes only `migrate diff`.
+- Template resolves `ariga.io/atlas` v1.3.0 (previously a v0.36.2 pseudo
+  version through `atlas-provider-gorm`).
+
 ### Empty Template migrations and atlas.sum handling
 
 - Template ships without SQL migrations and without `atlas.sum`; the example
@@ -25,12 +52,11 @@ support v0.2.x.
 - `db migrate:diff` and `make migration` work on a private copy of
   `migrations/` (`atlas.Workspace`, `atlas.DiffOptions.Dir`): they verify the
   existing `atlas.sum` first (`atlas.ErrSumMissing`, `atlas.ErrSumMismatch`,
-  with the explicit `atlas migrate hash` command), create it with the first
+  with the explicit hash command), create it with the first
   migration, update it afterwards and publish SQL and checksum together. No
   schema changes or any error leave the project untouched.
-- **Breaking:** `make migration` now requires the Atlas CLI and fails before
-  writing when it is missing (previously it created the file and skipped
-  `atlas.sum`).
+- `make migration` maintains `atlas.sum` as well (previously it created the
+  file and skipped `atlas.sum`); see above for how it is computed.
 - The migration runner is unchanged and still ignores `atlas.sum`.
 
 ### Integration harness outside Template

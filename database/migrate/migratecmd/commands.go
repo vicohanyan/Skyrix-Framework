@@ -1,9 +1,11 @@
 // Package migratecmd provides the console commands for SQL migrations:
-// db migrate, db migrate:status, db migrate:baseline and db migrate:diff.
+// db migrate, db migrate:status, db migrate:baseline, db migrate:hash and
+// db migrate:diff.
 //
 // The commands are standalone (console.NeedsNothing): they load their
 // settings and connect to the database only when they run, so describing
-// them and showing help never opens a connection.
+// them and showing help never opens a connection. Only db migrate:diff needs
+// the Atlas CLI; db migrate:hash needs neither the CLI nor the settings.
 package migratecmd
 
 import (
@@ -75,6 +77,7 @@ func (c *Commands) Subcommands() []*console.Command {
 		c.migrateCommand(),
 		c.statusCommand(),
 		c.baselineCommand(),
+		c.hashCommand(),
 		c.diffCommand(),
 	}
 }
@@ -246,11 +249,53 @@ already matches those migrations.`,
 	}
 }
 
+func (c *Commands) hashCommand() *console.Command {
+	return &console.Command{
+		Use:   "migrate:hash",
+		Short: "Recompute migrations/atlas.sum after editing SQL migrations",
+		Long: `Recompute migrations/atlas.sum from the SQL files in migrations/ as they are
+now, for example after writing SQL into a file created by "make migration" or
+after editing a migration that was not applied yet. SQL files are not changed.
+
+The checksum is computed by the official Atlas Go library in the format of
+"atlas migrate hash"; neither the Atlas CLI nor database settings are needed.
+Run it deliberately after reviewing the SQL: generators never rewrite a
+missing or mismatching atlas.sum on their own. The checksum protects the
+directory, not the database: db migrate keeps its own history of applied
+migrations and does not read atlas.sum. Commit the SQL files and atlas.sum
+together.`,
+		Args: cobra.NoArgs,
+		Run: console.Standalone(func(cmd *cobra.Command, _ []string) error {
+			workspace, err := atlas.OpenWorkspace(c.ProjectRoot)
+			if err != nil {
+				return err
+			}
+			defer workspace.Close()
+			changed, err := workspace.Rehash()
+			if err != nil {
+				return err
+			}
+			out, files := cmd.OutOrStdout(), workspace.Files()
+			switch {
+			case changed:
+				fmt.Fprintf(out, "updated %s/%s for %d migration(s); commit it together with the SQL files\n", atlas.MigrationsDir, atlas.SumFile, len(files))
+			case len(files) == 0:
+				fmt.Fprintf(out, "no SQL migrations in %s; nothing to hash\n", atlas.MigrationsDir)
+			default:
+				fmt.Fprintf(out, "%s/%s is up to date\n", atlas.MigrationsDir, atlas.SumFile)
+			}
+			return nil
+		}),
+	}
+}
+
 func (c *Commands) diffCommand() *console.Command {
 	return &console.Command{
 		Use:   "migrate:diff <name>",
-		Short: "Generate a SQL migration from the GORM models with Atlas",
+		Short: "Generate a SQL migration from the GORM models (optional, needs the Atlas CLI)",
 		Long: `Generate a SQL migration from tools/schemaloader and the migrations directory.
+This is the only migration command that needs the Atlas CLI; hand-written
+migrations ("make migration", "db migrate:hash") and db migrate work without it.
 Atlas configuration is generated temporarily from application settings; no
 atlas.hcl is required. MIGRATIONS_DEV_URL in Template can override the disposable
 PostgreSQL development database. The application database is never used as scratch
@@ -258,8 +303,8 @@ storage. --env overrides the generated environment label (APP_ENV in Template).
 
 Atlas works on a private copy of migrations/. When SQL migrations exist,
 migrations/atlas.sum must be present and match them, otherwise nothing is
-generated and the command asks for an explicit
-"atlas migrate hash --dir file://migrations". New migration files and the
+generated and the command asks for an explicit "db migrate:hash". New
+migration files and the
 updated atlas.sum (created on the first migration) are written to the project
 together; when there are no schema changes, or on any error, the project is
 left untouched. Commit the SQL files and atlas.sum together.`,
@@ -275,7 +320,7 @@ left untouched. Commit the SQL files and atlas.sum together.`,
 			}
 			binary, err := atlas.Lookup()
 			if err != nil {
-				return err
+				return fmt.Errorf("db migrate:diff generates migrations with the Atlas CLI; hand-written migrations (make migration, db migrate:hash) and db migrate do not need it: %w", err)
 			}
 			options, err := c.atlasOptions(env)
 			if err != nil {
@@ -288,7 +333,7 @@ left untouched. Commit the SQL files and atlas.sum together.`,
 				return err
 			}
 			defer workspace.Close()
-			if err := workspace.Verify(cmd.Context(), binary, out, errOut); err != nil {
+			if err := workspace.Verify(); err != nil {
 				return err
 			}
 			options.Dir = workspace.Dir()
@@ -306,7 +351,7 @@ left untouched. Commit the SQL files and atlas.sum together.`,
 			if err := atlas.ValidateFiles(created); err != nil {
 				return fmt.Errorf("atlas created migrations with unsupported names; nothing was written: %w", err)
 			}
-			sum, err := workspace.Hash(cmd.Context(), binary, out, errOut)
+			sum, err := workspace.Sum()
 			if err != nil {
 				return fmt.Errorf("update %s/%s; nothing was written: %w", atlas.MigrationsDir, atlas.SumFile, err)
 			}

@@ -1,9 +1,7 @@
 package atlas
 
 import (
-	"context"
 	"errors"
-	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -17,7 +15,6 @@ import (
 // that the files created by the operation are removed while atlas.sum and
 // the user's files keep their contents.
 func TestPublishRollsBackOnlyItsOwnChanges(t *testing.T) {
-	binary, _ := atlastest.Install(t)
 	for _, test := range []struct {
 		name     string
 		existing bool // project already has a migration and atlas.sum
@@ -41,7 +38,7 @@ func TestPublishRollsBackOnlyItsOwnChanges(t *testing.T) {
 				if err := seed.Add("20261101000000_seed.sql", []byte("SELECT 0;")); err != nil {
 					t.Fatal(err)
 				}
-				sum, err := seed.Hash(context.Background(), binary, io.Discard, io.Discard)
+				sum, err := seed.Sum()
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -60,8 +57,7 @@ func TestPublishRollsBackOnlyItsOwnChanges(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer workspace.Close()
-			ctx := context.Background()
-			if err := workspace.Verify(ctx, binary, io.Discard, io.Discard); err != nil {
+			if err := workspace.Verify(); err != nil {
 				t.Fatal(err)
 			}
 			created := []string{"20261103000000_a.sql", "20261103000001_b.sql"}
@@ -70,7 +66,7 @@ func TestPublishRollsBackOnlyItsOwnChanges(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			sum, err := workspace.Hash(ctx, binary, io.Discard, io.Discard)
+			sum, err := workspace.Sum()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -88,6 +84,36 @@ func TestPublishRollsBackOnlyItsOwnChanges(t *testing.T) {
 				t.Fatalf("project changed:\nbefore %v\nafter  %v", before, after)
 			}
 		})
+	}
+}
+
+// TestRehashFailureKeepsChecksum fails the atomic replacement of atlas.sum
+// and checks that the previous file and the SQL files stay as they were and
+// no temporary file remains.
+func TestRehashFailureKeepsChecksum(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, MigrationsDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{"20261101000000_seed.sql": "SELECT 1;", SumFile: "h1:stale\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := atlastest.Snapshot(t, root)
+	workspace, err := OpenWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer workspace.Close()
+	injected := errors.New("injected publish failure")
+	workspace.publish = func(string, string, bool) error { return injected }
+	if _, err := workspace.Rehash(); !errors.Is(err, injected) {
+		t.Fatalf("Rehash() error = %v", err)
+	}
+	if after := atlastest.Snapshot(t, root); !maps.Equal(before, after) {
+		t.Fatalf("project changed:\nbefore %v\nafter  %v", before, after)
 	}
 }
 

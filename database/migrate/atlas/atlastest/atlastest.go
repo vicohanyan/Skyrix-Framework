@@ -1,13 +1,13 @@
-// Package atlastest provides a fake Atlas CLI for tests of the migration
-// generators. It implements only "migrate hash --dir file://<dir>" and
-// "migrate diff <name> --config file://<config> --env <env>" with a
-// deterministic stand-in for the atlas.sum format. It does not prove the
+// Package atlastest provides a fake Atlas CLI for tests of db migrate:diff.
+// It implements only "migrate diff <name> --config file://<config> --env
+// <env>" and writes the SQL file without atlas.sum: the framework computes
+// the checksum itself with the Atlas Go library. It does not prove the
 // integration with the real CLI; tests that need it check for atlas in PATH.
 //
 // Environment variables control the fake:
 //
 //	FAKE_ATLAS_LOG      file that receives one line per invocation
-//	FAKE_ATLAS_FAIL     "hash" or "diff" makes that subcommand fail
+//	FAKE_ATLAS_FAIL     "diff" makes diff fail after writing a partial file
 //	FAKE_ATLAS_SQL      SQL that diff writes; empty means no schema changes
 //	FAKE_ATLAS_VERSION  version of the generated file (default 20261103000000)
 //	FAKE_ATLAS_CONFIG   file that receives a copy of the diff config
@@ -25,20 +25,7 @@ const script = `#!/bin/sh
 set -eu
 export LC_ALL=C
 if [ -n "${FAKE_ATLAS_LOG:-}" ]; then echo "$*" >> "$FAKE_ATLAS_LOG"; fi
-hash_dir() {
-	d=$1
-	files=$(cd "$d" && ls | grep '\.sql$' | sort || true)
-	total=$(cd "$d" && for f in $files; do printf '%s\n' "$f"; cat "$f"; done | sha256sum | cut -c1-64)
-	{
-		printf 'h1:%s\n' "$total"
-		for f in $files; do printf '%s h1:%s\n' "$f" "$(sha256sum < "$d/$f" | cut -c1-64)"; done
-	} > "$d/atlas.sum"
-}
 case "$1 $2" in
-"migrate hash")
-	[ "${FAKE_ATLAS_FAIL:-}" = hash ] && { echo "fake atlas: hash failed" >&2; exit 1; }
-	hash_dir "${4#file://}"
-	;;
 "migrate diff")
 	if [ -n "${FAKE_ATLAS_CONFIG:-}" ]; then cp "${5#file://}" "$FAKE_ATLAS_CONFIG"; fi
 	dir=$(sed -n 's/^ *dir = "file:\/\/\(.*\)"$/\1/p' "${5#file://}")
@@ -49,7 +36,6 @@ case "$1 $2" in
 	fi
 	if [ -z "${FAKE_ATLAS_SQL:-}" ]; then echo "no changes"; exit 0; fi
 	printf '%s\n' "$FAKE_ATLAS_SQL" > "$dir/${FAKE_ATLAS_VERSION:-20261103000000}_$3.sql"
-	hash_dir "$dir"
 	;;
 *)
 	echo "fake atlas: unsupported $*" >&2

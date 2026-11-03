@@ -1,11 +1,11 @@
 package makecmd
 
 import (
-	"errors"
 	"go/parser"
 	"go/token"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -75,15 +75,20 @@ func newScaffoldProject(t *testing.T) string {
 	return root
 }
 
-func TestMakeMigrationCreatesFileAndChecksum(t *testing.T) {
-	binary, log := atlastest.Install(t)
+// withoutAtlasCLI makes sure no atlas binary can be found.
+func withoutAtlasCLI(t *testing.T) {
+	t.Helper()
+	t.Setenv("PATH", t.TempDir())
+	if _, err := exec.LookPath("atlas"); err == nil {
+		t.Fatal("atlas still in PATH")
+	}
+}
+
+func TestMakeMigrationCreatesFileAndChecksumWithoutAtlas(t *testing.T) {
+	withoutAtlasCLI(t)
 	root := newScaffoldProject(t)
 	now := time.Date(2026, 11, 2, 13, 52, 50, 0, time.UTC)
-	command := &MakeCommand{
-		ProjectRoot: root,
-		Now:         func() time.Time { return now },
-		LookupAtlas: func() (string, error) { return binary, nil },
-	}
+	command := &MakeCommand{ProjectRoot: root, Now: func() time.Time { return now }}
 
 	// First migration on an empty project creates the file and atlas.sum.
 	output, err := executeScaffoldCommand(command.Command().Cobra(), "migration", "add_trigger")
@@ -95,10 +100,10 @@ func TestMakeMigrationCreatesFileAndChecksum(t *testing.T) {
 		t.Fatalf("migration content = %q, want empty", content)
 	}
 	firstSum := readTestFile(t, filepath.Join(root, "migrations", "atlas.sum"))
-	if !strings.Contains(firstSum, "20261102135250_add_trigger.sql") {
+	if !strings.HasPrefix(firstSum, "h1:") || !strings.Contains(firstSum, "\n20261102135250_add_trigger.sql h1:") {
 		t.Fatalf("atlas.sum = %q", firstSum)
 	}
-	if !strings.Contains(output, "migration created: migrations/20261102135250_add_trigger.sql") || !strings.Contains(output, "atlas migrate hash") {
+	if !strings.Contains(output, "migration created: migrations/20261102135250_add_trigger.sql") || !strings.Contains(output, `"db migrate:hash"`) {
 		t.Fatalf("make migration output = %q", output)
 	}
 
@@ -108,7 +113,6 @@ func TestMakeMigrationCreatesFileAndChecksum(t *testing.T) {
 
 	// The next migration verifies the existing checksum, then updates it.
 	now = now.Add(time.Second)
-	calls := len(atlastest.Invocations(t, log))
 	if _, err := executeScaffoldCommand(command.Command().Cobra(), "migration", "build_index", "--notx"); err != nil {
 		t.Fatalf("make notx migration error = %v", err)
 	}
@@ -117,9 +121,6 @@ func TestMakeMigrationCreatesFileAndChecksum(t *testing.T) {
 	if secondSum == firstSum || !strings.Contains(secondSum, "20261102135251_build_index.notx.sql") {
 		t.Fatalf("atlas.sum not updated: %q", secondSum)
 	}
-	if got := len(atlastest.Invocations(t, log)) - calls; got != 2 {
-		t.Fatalf("atlas calls for the second migration = %d, want verify + update", got)
-	}
 
 	if _, err := executeScaffoldCommand(command.Command().Cobra(), "migration", "Add-Trigger"); err == nil {
 		t.Fatal("make migration accepted an invalid name")
@@ -127,25 +128,19 @@ func TestMakeMigrationCreatesFileAndChecksum(t *testing.T) {
 }
 
 func TestMakeMigrationWritesNothingOnError(t *testing.T) {
-	binary, _ := atlastest.Install(t)
+	withoutAtlasCLI(t)
 	now := time.Date(2026, 11, 2, 13, 52, 50, 0, time.UTC)
 	for _, test := range []struct {
 		name  string
 		setup func(t *testing.T, root string)
-		atlas func() (string, error)
 		want  string
 	}{
-		{
-			name:  "atlas missing",
-			atlas: func() (string, error) { return "", errors.New("atlas CLI is not installed") },
-			want:  "needs the Atlas CLI",
-		},
 		{
 			name: "checksum missing",
 			setup: func(t *testing.T, root string) {
 				writeProjectFile(t, root, "migrations/20261101000000_existing.sql", "SELECT 1;")
 			},
-			want: "atlas migrate hash --dir file://migrations",
+			want: `"db migrate:hash"`,
 		},
 		{
 			name: "checksum mismatch",
@@ -156,11 +151,18 @@ func TestMakeMigrationWritesNothingOnError(t *testing.T) {
 			want: "does not match",
 		},
 		{
-			name: "hash fails",
+			name: "checksum without SQL files does not match",
 			setup: func(t *testing.T, root string) {
-				t.Setenv("FAKE_ATLAS_FAIL", "hash")
+				writeProjectFile(t, root, "migrations/atlas.sum", "user checksum\n")
 			},
-			want: "nothing was written",
+			want: "does not match",
+		},
+		{
+			name: "version already exists",
+			setup: func(t *testing.T, root string) {
+				writeProjectFile(t, root, "migrations/20261102135250_other.sql", "SELECT 1;")
+			},
+			want: "already exists",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -170,11 +172,7 @@ func TestMakeMigrationWritesNothingOnError(t *testing.T) {
 			if test.setup != nil {
 				test.setup(t, root)
 			}
-			lookup := test.atlas
-			if lookup == nil {
-				lookup = func() (string, error) { return binary, nil }
-			}
-			command := &MakeCommand{ProjectRoot: root, Now: func() time.Time { return now }, LookupAtlas: lookup}
+			command := &MakeCommand{ProjectRoot: root, Now: func() time.Time { return now }}
 			before := atlastest.Snapshot(t, root)
 			_, err := executeScaffoldCommand(command.Command().Cobra(), "migration", "add_trigger")
 			if err == nil || !strings.Contains(err.Error(), test.want) {

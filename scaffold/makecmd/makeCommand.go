@@ -25,14 +25,13 @@ type MakeCommand struct {
 	ProjectRoot string
 	// DomainDir is the domain directory relative to the project root;
 	// empty means DefaultDomainDir.
-	DomainDir   string
-	Now         func() time.Time
-	LookupAtlas func() (string, error)
+	DomainDir string
+	Now       func() time.Time
 }
 
 // NewMakeCommand constructs the scaffolding command.
 func NewMakeCommand() *MakeCommand {
-	return &MakeCommand{ProjectRoot: ".", DomainDir: DefaultDomainDir, Now: time.Now, LookupAtlas: atlas.Lookup}
+	return &MakeCommand{ProjectRoot: ".", DomainDir: DefaultDomainDir, Now: time.Now}
 }
 
 // Command describes the "make" group. Its commands are standalone
@@ -81,12 +80,12 @@ func (c *MakeCommand) migrationCommand() *console.Command {
 the models (extensions, triggers, functions, data fixes). With --notx the file
 is named *.notx.sql and runs outside a transaction.
 
-The command needs the Atlas CLI: it creates migrations/atlas.sum on the first
-migration and updates it with "atlas migrate hash" afterwards. When SQL
-migrations already exist, atlas.sum must be present and match them; otherwise
-nothing is written and the command asks for an explicit
-"atlas migrate hash --dir file://migrations". After writing SQL into the new
-file, run that command and commit the SQL file and atlas.sum together.`,
+The command needs no Atlas CLI, account or database: it creates
+migrations/atlas.sum on the first migration and updates it afterwards with the
+official Atlas Go library. When SQL migrations already exist, atlas.sum must be
+present and match them; otherwise nothing is written and the command asks for
+an explicit "db migrate:hash". After writing SQL into the new file, run
+"db migrate:hash" and commit the SQL file and atlas.sum together.`,
 		Args: cobra.ExactArgs(1),
 		Flags: func(flags *pflag.FlagSet) {
 			flags.Bool("notx", false, "run the migration outside a transaction (e.g. CREATE INDEX CONCURRENTLY)")
@@ -97,21 +96,14 @@ file, run that command and commit the SQL file and atlas.sum together.`,
 			if err != nil {
 				return err
 			}
-			now, lookupAtlas := c.Now, c.LookupAtlas
+			now := c.Now
 			if now == nil {
 				now = time.Now
-			}
-			if lookupAtlas == nil {
-				lookupAtlas = atlas.Lookup
 			}
 			version := migrate.NewVersion(now())
 			fileName, err := migrate.FileName(version, args[0], noTx)
 			if err != nil {
 				return err
-			}
-			binary, err := lookupAtlas()
-			if err != nil {
-				return fmt.Errorf("make migration needs the Atlas CLI to maintain %s/%s; nothing was written: %w", atlas.MigrationsDir, atlas.SumFile, err)
 			}
 			existing, err := atlas.MigrationFiles(root)
 			if err != nil {
@@ -141,14 +133,14 @@ file, run that command and commit the SQL file and atlas.sum together.`,
 				return err
 			}
 			defer workspace.Close()
-			out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
-			if err := workspace.Verify(cmd.Context(), binary, out, errOut); err != nil {
+			out := cmd.OutOrStdout()
+			if err := workspace.Verify(); err != nil {
 				return err
 			}
 			if err := workspace.Add(fileName, content); err != nil {
 				return err
 			}
-			sum, err := workspace.Hash(cmd.Context(), binary, out, errOut)
+			sum, err := workspace.Sum()
 			if err != nil {
 				return fmt.Errorf("update %s/%s; nothing was written: %w", atlas.MigrationsDir, atlas.SumFile, err)
 			}

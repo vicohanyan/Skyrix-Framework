@@ -391,10 +391,10 @@ files and symbol conflicts are errors; repeated generation never overwrites.
 Write failures roll back only the operation's files, restoring previous contents
 and modes and removing only newly created empty directories. External edits
 detected while publishing/rolling back are preserved and reported.
-`make migration` needs the Atlas CLI (checked before anything is written): it
-verifies the existing atlas.sum, prepares the new file and atlas.sum in a
-private copy of `migrations/` and publishes both together; a failed hash
-leaves the project unchanged.
+`make migration` needs no Atlas CLI, account or database: it verifies the
+existing atlas.sum, prepares the new file and atlas.sum in a private copy of
+`migrations/` and publishes both together; a checksum error leaves the project
+unchanged. After writing SQL into the file, run `db migrate:hash`.
 
 ## Integration harness
 
@@ -520,6 +520,22 @@ Integration tests use only `SKYRIX_TEST_POSTGRES_DSN`, which must identify a
 **dedicated test database** with CREATE/DROP SCHEMA permission. Without it they
 skip; recording-driver tests do not establish real PostgreSQL pool isolation.
 
+SQL migrations are the basis: the runner (`db migrate`, `migrate:status`,
+`migrate:baseline`) applies the files in `migrations/` and keeps its history in
+the database; it needs neither the Atlas CLI nor `atlas.sum`. Two ways create
+migrations in that one directory:
+
+- **Hand-written SQL (no Atlas CLI):** `cobra make migration <name>` creates
+  an empty file, you write the SQL, then `cobra db migrate:hash` recomputes
+  `atlas.sum`. Both commands compute the checksum with the official Atlas Go
+  library (`ariga.io/atlas/sql/migrate`, the same format as
+  `atlas migrate hash`) and need no CLI, account, database settings or Wire
+  graph. `db migrate:hash` only replaces `atlas.sum` (atomically), never SQL
+  files.
+- **Optional generation with Atlas:** `cobra db migrate:diff <name>` is the
+  only command that needs the Atlas CLI. Without it the command fails with an
+  installation hint before reading settings or writing anything.
+
 Model-based migration diffs (`cobra db migrate:diff <name>`) generate a private
 temporary Atlas config; no project atlas.hcl is required. Template reads optional
 MIGRATIONS_DEV_URL from its MIGRATIONS config section or environment. Without an
@@ -528,10 +544,10 @@ is separate from the application's DATABASE configuration. The temp file is
 removed on success, error or cancellation. Existing project Atlas configs are
 ignored and preserved; migrate their dev URL to MIGRATIONS_DEV_URL, or invoke
 Atlas directly for custom workflows. `--env` labels the generated environment.
-Atlas CLI must be installed; the default scratch URL also requires Docker.
-Atlas runs on a private copy of `migrations/`: when SQL migrations exist,
-`atlas.sum` is verified first (missing or mismatching checksums are errors
-that ask for an explicit `atlas migrate hash --dir file://migrations`), and
+Atlas CLI must be installed for this command; the default scratch URL also
+requires Docker. Atlas runs on a private copy of `migrations/`: when SQL
+migrations exist, `atlas.sum` is verified first (missing or mismatching
+checksums are errors that ask for an explicit `db migrate:hash`), and
 the new SQL files are published with the updated (or, on an empty directory,
 newly created) `atlas.sum` only when a migration was generated. The runner
 ignores `atlas.sum`.

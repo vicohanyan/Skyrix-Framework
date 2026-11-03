@@ -2,10 +2,8 @@ package atlas
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -18,10 +16,11 @@ import (
 // ignores the file and never needs it.
 const SumFile = migrate.AtlasSumFile
 
-// HashCommand is the explicit command that rewrites atlas.sum. Generators
-// never run it on a directory whose checksum is missing or wrong: the user
-// reviews the SQL files and runs it deliberately.
-const HashCommand = "atlas migrate hash --dir file://" + MigrationsDir
+// HashCommand is the explicit console command that rewrites atlas.sum.
+// Generators never rewrite a checksum that is missing or wrong: the user
+// reviews the SQL files and runs it deliberately. It needs no Atlas CLI;
+// "atlas migrate hash --dir file://migrations" produces the same file.
+const HashCommand = "db migrate:hash"
 
 var (
 	// ErrSumMissing reports SQL migrations without atlas.sum.
@@ -101,6 +100,9 @@ func (w *Workspace) copyIn() error {
 // Dir is the absolute path of the copied migration directory.
 func (w *Workspace) Dir() string { return filepath.Join(w.tmp, MigrationsDir) }
 
+// Files returns the names of the SQL migrations that were copied.
+func (w *Workspace) Files() []string { return slices.Clone(w.files) }
+
 // Close removes the temporary copy.
 func (w *Workspace) Close() error {
 	if err := os.RemoveAll(w.tmp); err != nil {
@@ -112,9 +114,9 @@ func (w *Workspace) Close() error {
 // Verify checks the existing atlas.sum before anything is generated. An
 // empty directory without atlas.sum is valid (the first generation creates
 // it). SQL migrations without atlas.sum, or an atlas.sum that differs from
-// the one "atlas migrate hash" computes for them, are errors: the checksum is
-// never rewritten silently.
-func (w *Workspace) Verify(ctx context.Context, binary string, stdout, stderr io.Writer) error {
+// the one computed for them (see Sum), are errors: the checksum is never
+// rewritten silently.
+func (w *Workspace) Verify() error {
 	if !w.hasSum {
 		if len(w.files) == 0 {
 			return nil
@@ -122,7 +124,7 @@ func (w *Workspace) Verify(ctx context.Context, binary string, stdout, stderr io
 		return fmt.Errorf("%w: %s contains %d SQL migration(s) but no %s; review them and run %q explicitly, then commit the SQL files and %s together",
 			ErrSumMissing, MigrationsDir, len(w.files), SumFile, HashCommand, SumFile)
 	}
-	computed, err := w.Hash(ctx, binary, stdout, stderr)
+	computed, err := w.Sum()
 	if err != nil {
 		return fmt.Errorf("verify %s/%s: %w", MigrationsDir, SumFile, err)
 	}
@@ -133,19 +135,41 @@ func (w *Workspace) Verify(ctx context.Context, binary string, stdout, stderr io
 	return nil
 }
 
-// Hash runs "atlas migrate hash" on the copy and returns the new atlas.sum.
-func (w *Workspace) Hash(ctx context.Context, binary string, stdout, stderr io.Writer) ([]byte, error) {
-	if err := Hash(ctx, binary, w.tmp, stdout, stderr); err != nil {
-		return nil, err
+// Sum computes atlas.sum for the SQL files currently in the copy.
+func (w *Workspace) Sum() ([]byte, error) { return Sum(w.Dir()) }
+
+// Rehash recomputes atlas.sum for the project's SQL migrations as they are
+// and replaces the file atomically; SQL files are never modified. It reports
+// whether atlas.sum changed. A directory without SQL migrations and without
+// atlas.sum is left as it is. It fails, writing nothing, when a file name
+// does not follow the migration format or the directory changed meanwhile.
+func (w *Workspace) Rehash() (changed bool, result error) {
+	if len(w.files) == 0 && !w.hasSum {
+		return false, nil
 	}
-	sum, ok, err := readOptional(filepath.Join(w.Dir(), SumFile))
+	if err := ValidateFiles(w.files); err != nil {
+		return false, fmt.Errorf("unsupported migration file names; nothing was written: %w", err)
+	}
+	sum, err := w.Sum()
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	if !ok {
-		return nil, fmt.Errorf("atlas migrate hash did not write %s", SumFile)
+	if w.hasSum && bytes.Equal(sum, w.sum) {
+		return false, nil
 	}
-	return sum, nil
+	dir := filepath.Join(w.root, MigrationsDir)
+	if err := w.checkUnchanged(dir); err != nil {
+		return false, err
+	}
+	temp, err := writeTemp(dir, sum, 0o644)
+	if err != nil {
+		return false, err
+	}
+	defer os.Remove(temp)
+	if err := w.publish(temp, filepath.Join(dir, SumFile), w.hasSum); err != nil {
+		return false, fmt.Errorf("write %s/%s: %w", MigrationsDir, SumFile, err)
+	}
+	return true, nil
 }
 
 // Add writes a new migration file into the copy.
@@ -180,19 +204,8 @@ func (w *Workspace) Publish(created []string, sum []byte) (result error) {
 		return errors.New("no migrations to publish")
 	}
 	dir := filepath.Join(w.root, MigrationsDir)
-	if err := rejectSymlink(dir); err != nil {
+	if err := w.checkUnchanged(dir); err != nil {
 		return err
-	}
-	current, err := MigrationFiles(w.root)
-	if err != nil {
-		return err
-	}
-	currentSum, currentHasSum, err := readOptional(filepath.Join(dir, SumFile))
-	if err != nil {
-		return err
-	}
-	if !slices.Equal(current, w.files) || currentHasSum != w.hasSum || !bytes.Equal(currentSum, w.sum) {
-		return fmt.Errorf("%s changed during generation; nothing was written", MigrationsDir)
 	}
 
 	var (
@@ -255,6 +268,26 @@ func (w *Workspace) Publish(created []string, sum []byte) (result error) {
 	// during this step leaves the original checksum in place.
 	if err := w.publish(temp, filepath.Join(dir, SumFile), w.hasSum); err != nil {
 		return fmt.Errorf("write %s/%s: %w", MigrationsDir, SumFile, err)
+	}
+	return nil
+}
+
+// checkUnchanged verifies that the project directory still has the SQL file
+// names and atlas.sum that were copied.
+func (w *Workspace) checkUnchanged(dir string) error {
+	if err := rejectSymlink(dir); err != nil {
+		return err
+	}
+	current, err := MigrationFiles(w.root)
+	if err != nil {
+		return err
+	}
+	currentSum, currentHasSum, err := readOptional(filepath.Join(dir, SumFile))
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(current, w.files) || currentHasSum != w.hasSum || !bytes.Equal(currentSum, w.sum) {
+		return fmt.Errorf("%s changed during generation; nothing was written", MigrationsDir)
 	}
 	return nil
 }

@@ -144,7 +144,7 @@ skip; recording-driver tests do not establish real PostgreSQL pool isolation.
 | `cobra`                                  | Console capability of platform modules: `CommandProvider` + `ModuleCommands`.                                                                                                                                            |
 | `cobra/console`                          | Cobra console host: `Command` (a command described once: metadata, flags and a `Runner`), `Standalone`/`With` (runners without dependencies or with a lazily built `Graph`), `Needs` (`NeedsNothing`, `NeedsDatabase`, `NeedsApp`), `Graph` (`NewGraph` around a Wire injector, `Derive`, `Value`) and `Console` (`New`, `Add`, `AddCobra`, `Execute`). |
 | `cobra/corecmd`                          | Describes the framework commands: `db` (`database/dbcmd`), `jobs:run`, `make` (`Commands(Options)`).                                                                                                                       |
-| `database/migrate`                       | Forward-only SQL migration runner (see [Migrations](#migrations)), standard library only. `migratecmd` — the `db migrate*` commands; `atlas` — runs the Atlas CLI.                                                       |
+| `database/migrate`                       | Forward-only SQL migration runner (see [Migrations](#migrations)), standard library only. `migratecmd` — the `db migrate*` commands; `atlas` — `atlas.sum` via the Atlas Go library and the optional Atlas CLI for `migrate:diff`.                                                       |
 | `database/dbcmd`                         | The `db` command group: the migration commands plus `db automigrate` (GORM AutoMigrate, development only) and `db seed`. The application supplies only `dbcmd.Models` and `dbcmd.Seeders`.                              |
 
 There is no worker host package: the template's `cmd/worker` is a
@@ -329,21 +329,25 @@ What a command needs follows from its runner (`console.Standalone` or
   unless explicitly allowed, and serialises runners with a PostgreSQL
   advisory lock.
 - Commands: `db migrate` (`--steps`, `--to`), `db migrate:status`,
-  `db migrate:baseline <version>`, `db migrate:diff <name>` (generates a
-  migration from the GORM models with `atlas migrate diff`, needs the `atlas`
-  binary), `make migration <name>`. Diff writes a private temporary HCL config,
+  `db migrate:baseline <version>`, `db migrate:hash`, `make migration <name>`
+  and the optional `db migrate:diff <name>` (generates a migration from the
+  GORM models with `atlas migrate diff`; the only command that needs the
+  `atlas` binary). `make migration` and `db migrate:hash` compute `atlas.sum`
+  with the Atlas Go library (`ariga.io/atlas/sql/migrate`, imported only by
+  `database/migrate/atlas`; the runner stays standard library only). Diff writes a private temporary HCL config,
   invokes Atlas with an explicit --config and removes the file afterwards.
   Application settings supply AtlasEnv and optional AtlasDevURL; Template loads
   MIGRATIONS_DEV_URL from the MIGRATIONS section/environment. The default dev URL
   lives once in Framework and uses disposable PostgreSQL 18 in Docker. Main DB
   credentials are not copied into the Atlas config. Model loader and migration
   paths follow project conventions; custom project HCL is ignored and preserved.
-  `db migrate:diff` and `make migration` run Atlas on a private copy of
-  `migrations/` (`atlas.Workspace`): they verify `atlas.sum` before
+  `db migrate:diff`, `make migration` and `db migrate:hash` work on a private
+  copy of `migrations/` (`atlas.Workspace`): generators verify `atlas.sum` before
   generating (missing or mismatching checksums are errors, never recomputed
   silently), then publish the new SQL files and `atlas.sum` together; no
-  changes or an error leave the project untouched.
-  Migrations are applied by
+  changes or an error leave the project untouched. `db migrate:hash`
+  (`Workspace.Rehash`) replaces only `atlas.sum`, atomically, after the same
+  concurrent-change check. Migrations are applied by
   `db migrate`, never by `atlas migrate apply`.
 - `db automigrate` (GORM AutoMigrate + seeders) is for development only and is
   not recorded in `skyrix_migrations`.

@@ -1,4 +1,9 @@
-// Package atlas runs the Atlas CLI used to generate SQL migrations.
+// Package atlas maintains the Atlas checksum file (atlas.sum) of the SQL
+// migration directory with the official Atlas Go library, and runs the
+// optional Atlas CLI that generates migrations from the models
+// ("db migrate:diff"). Only that generation needs the CLI; hand-written
+// migrations, "make migration", "db migrate:hash" and the migration runner
+// do not.
 package atlas
 
 import (
@@ -39,11 +44,6 @@ func Run(ctx context.Context, binary, dir string, stdout, stderr io.Writer, args
 		return fmt.Errorf("atlas %v: %w", args, err)
 	}
 	return nil
-}
-
-// Hash recomputes atlas.sum for the migration directory under root.
-func Hash(ctx context.Context, binary, root string, stdout, stderr io.Writer) error {
-	return Run(ctx, binary, root, stdout, stderr, "migrate", "hash", "--dir", "file://"+MigrationsDir)
 }
 
 // MigrationFiles returns the names of the migration files in the migration

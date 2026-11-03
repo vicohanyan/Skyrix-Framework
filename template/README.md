@@ -181,7 +181,8 @@ cobra config:env --section redis  # exact section key
 cobra db migrate                 # apply pending SQL migrations
 cobra db migrate:status          # state of the migrations
 cobra db migrate:baseline        # mark migrations up to a version as applied
-cobra db migrate:diff <name>     # generate a migration from the GORM models (needs atlas)
+cobra db migrate:hash            # recompute migrations/atlas.sum after editing SQL
+cobra db migrate:diff <name>     # optional: generate a migration from the GORM models (needs the Atlas CLI)
 cobra make migration <name>      # empty migration for hand-written SQL
 cobra db automigrate             # DEV ONLY: GORM AutoMigrate + seeders
 cobra db seed                    # run the seeders
@@ -273,37 +274,68 @@ SQL migration history. Avoid mixing both approaches on the same database.
 `migrations/` holds forward-only SQL migrations in the Atlas directory format
 (`<YYYYMMDDHHMMSS>_<name>.sql`, `.notx.sql` for statements that must run
 outside a transaction), embedded into the console binary. They are applied by
-`cobra db migrate`, never by `atlas migrate apply`. `cobra db migrate:diff <name>`
-loads the GORM models through `tools/schemaloader` (list every model managed by
-migrations in `tools/schemaloader/main.go`). The command creates a private temporary
-Atlas config and removes it on completion; no project `atlas.hcl` is needed.
+`cobra db migrate`, never by `atlas migrate apply`. Plain SQL files and the
+existing runner are the basis; hand-written and generated migrations live in
+the same directory and are applied the same way.
 
 The Template ships with an empty `migrations/` (only `embed.go` and a
 `README.md` placeholder; the package embeds `*` and exposes only `*.sql` files)
 and no `atlas.sum`. `db migrate` on it applies nothing; `db migrate`,
 `migrate:status` and `migrate:baseline` read the embedded files and never
-create or change project files, and the runner does not use `atlas.sum`.
+create or change project files. The runner keeps its own history of applied
+migrations in the database and does not read `atlas.sum`; none of the runner
+commands needs the Atlas CLI or an Atlas account.
 
-Checksum rules for `make migration` and `db migrate:diff` (both need the Atlas
-CLI and report its absence before writing anything):
+### Hand-written SQL migrations (no Atlas CLI)
 
-- Atlas works on a private copy of `migrations/`. New SQL files and
+Needs neither the Atlas CLI, an Atlas account nor a database connection:
+
+```bash
+cobra make migration add_search_trigger   # migrations/<version>_add_search_trigger.sql (+ atlas.sum)
+$EDITOR migrations/<version>_add_search_trigger.sql
+cobra db migrate:hash                     # recompute atlas.sum after editing the SQL
+cobra db migrate                          # apply; commit the SQL file and atlas.sum together
+```
+
+`make migration --notx` creates a `*.notx.sql` file that runs outside a
+transaction (for example `CREATE INDEX CONCURRENTLY`). `atlas.sum` is
+maintained by the official Atlas Go library (`ariga.io/atlas/sql/migrate`) in
+the format of `atlas migrate hash`, so the directory stays valid for the
+optional Atlas generation below.
+
+### atlas.sum rules (`make migration`, `db migrate:hash`, `db migrate:diff`)
+
+- Generators work on a private copy of `migrations/`. New SQL files and
   `atlas.sum` are written to the project together, and only when a migration
   was created: a diff without schema changes, or any error, leaves the
   project untouched (files created by the failed operation are removed, the
-  previous `atlas.sum` stays).
-- On an empty directory the first generated migration also creates
-  `atlas.sum`.
-- When SQL migrations exist, `atlas.sum` is verified first (with
-  `atlas migrate hash` on the copy) and updated after generation. A missing
-  or mismatching `atlas.sum` is an error; it is never recomputed silently.
+  previous `atlas.sum` stays). A directory changed by someone else during the
+  operation is reported and nothing is written.
+- On an empty directory the first migration also creates `atlas.sum`.
+- When SQL migrations exist, `make migration` and `db migrate:diff` verify
+  `atlas.sum` first and update it after generation. A missing or mismatching
+  `atlas.sum` is an error before anything is written; it is never recomputed
+  silently.
+- `cobra db migrate:hash` is the explicit recomputation: it rewrites only
+  `atlas.sum` (atomically) and never changes SQL files. It rejects file names
+  that do not follow the migration format, and leaves an empty directory
+  without `atlas.sum`.
 - Commit the SQL files and `atlas.sum` together.
 - Never edit an applied migration. If a migration that is not applied
   anywhere was changed on purpose (for example after writing SQL into a file
-  from `make migration`), review the change and run
-  `atlas migrate hash --dir file://migrations` explicitly. `atlas.sum` only
-  protects the files in the repository; the history of applied migrations
-  lives in the database (`cobra db migrate:status`).
+  from `make migration`), review the change and run `cobra db migrate:hash`.
+  `atlas.sum` only protects the files in the repository; the history of
+  applied migrations lives in the database (`cobra db migrate:status`).
+
+### Optional: generating migrations with Atlas
+
+`cobra db migrate:diff <name>` is the only command that needs the Atlas CLI
+(and Docker for the default dev URL). It loads the GORM models through
+`tools/schemaloader` (list every model managed by migrations in
+`tools/schemaloader/main.go`), creates a private temporary Atlas config and
+removes it on completion; no project `atlas.hcl` is needed. Without the CLI it
+fails with an installation hint before reading settings or writing anything;
+hand-written migrations and `db migrate` keep working.
 
 To run the example domain against a database, opt in explicitly:
 
@@ -328,8 +360,9 @@ the Framework default; it is independent of DATABASE connection credentials and
 must identify disposable scratch storage, never an application database. APP_ENV
 (and the optional `--env` flag) labels the generated environment; separate HCL
 environments are unnecessary. Atlas CLI and Docker (for the default dev URL) must
-be available when running diff. Existing custom atlas.hcl files are not read or
-modified by this command; transfer their dev setting to MIGRATIONS_DEV_URL.
+be available when running `db migrate:diff`; no other command needs them.
+Existing custom atlas.hcl files are not read or modified by this command;
+transfer their dev setting to MIGRATIONS_DEV_URL.
 Advanced custom Atlas projects can still be run directly through the Atlas CLI.
 
 ## Tenants
@@ -557,10 +590,9 @@ files and symbol conflicts are errors; repeated generation never overwrites.
 Write failures roll back only the operation's files, restoring previous contents
 and modes and removing only newly created empty directories. External edits
 detected while publishing/rolling back are preserved and reported.
-`make migration` needs the Atlas CLI (checked before anything is written): it
-verifies the existing atlas.sum, prepares the new file and atlas.sum in a
-private copy of `migrations/` and publishes both together; a failed hash
-leaves the project unchanged.
+`make migration` needs no Atlas CLI: it verifies the existing atlas.sum,
+prepares the new file and atlas.sum in a private copy of `migrations/` and
+publishes both together; a checksum error leaves the project unchanged.
 
 ### Domain transactions
 

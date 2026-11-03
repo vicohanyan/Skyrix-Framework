@@ -20,6 +20,7 @@ func TestDBGroupContainsMigrationAndDevelopmentCommands(t *testing.T) {
 		"migrate":          console.NeedsNothing,
 		"migrate:status":   console.NeedsNothing,
 		"migrate:baseline": console.NeedsNothing,
+		"migrate:hash":     console.NeedsNothing,
 		"migrate:diff":     console.NeedsNothing,
 		"automigrate":      console.NeedsDatabase,
 		"seed":             console.NeedsDatabase,
