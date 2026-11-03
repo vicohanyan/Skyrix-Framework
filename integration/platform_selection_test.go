@@ -1,4 +1,4 @@
-package providers_test
+package integration
 
 import (
 	"os"
@@ -10,11 +10,12 @@ import (
 
 // Exercise real platformgen + Wire with two declarations in the same providers
 // package. Imports are shared intentionally; construction and lifecycle are not.
+// The fixture reuses the Template's go.mod, internal/config and providers/auth.go
+// (with the external Auth library) under another module path.
 func TestPlatformDriverSelection(t *testing.T) {
-	template, err := filepath.Abs("..")
-	if err != nil {
-		t.Fatal(err)
-	}
+	l := projectLayout(t)
+	requireLibrary(t, l.authLib, "gitlab.com/skyrix-lib/auth", "SKYRIX_AUTH_LIB")
+	template := l.template
 	dir := t.TempDir()
 	env := append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=readonly -buildvcs=false", "PLATFORM_FIRST_ENABLED=false", "PLATFORM_SECOND_ENABLED=false")
 	run := func(workdir string, extra []string, name string, args ...string) string {
@@ -47,8 +48,8 @@ func TestPlatformDriverSelection(t *testing.T) {
 		source := string(data)
 		if name == "go.mod" {
 			source = strings.Replace(source, "module gitlab.com/skyrix-lib/template", "module example.com/selection", 1)
-			source = strings.Replace(source, "replace gitlab.com/skyrix-lib/framework => ..", "replace gitlab.com/skyrix-lib/framework => "+filepath.Dir(template), 1)
-			source = strings.Replace(source, "replace gitlab.com/skyrix-lib/auth => ../../skyrix-auth-lib", "replace gitlab.com/skyrix-lib/auth => "+filepath.Join(filepath.Dir(template), "..", "skyrix-auth-lib"), 1)
+			source = strings.Replace(source, "replace gitlab.com/skyrix-lib/framework => ..", "replace gitlab.com/skyrix-lib/framework => "+l.framework, 1)
+			source = strings.Replace(source, "replace gitlab.com/skyrix-lib/auth => ../../skyrix-auth-lib", "replace gitlab.com/skyrix-lib/auth => "+l.authLib, 1)
 		}
 		write(name, source)
 	}

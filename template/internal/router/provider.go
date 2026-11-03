@@ -1,9 +1,9 @@
 package router
 
 import (
+	"fmt"
 	"net/http"
 
-	authmiddleware "gitlab.com/skyrix-lib/auth/middleware"
 	"gitlab.com/skyrix-lib/framework/httpserver"
 	"gitlab.com/skyrix-lib/template/internal/config"
 	"gitlab.com/skyrix-lib/template/providers"
@@ -11,21 +11,22 @@ import (
 	"github.com/goforj/wire"
 )
 
+// ProvideRouter builds the router; a nil entry in the API chain is an error.
 func ProvideRouter(
 	cfg *config.HttpServer,
 	globalMw *providers.GlobalMiddleware,
-	auth *authmiddleware.AuthMiddleware,
-	tenantMw TenantMiddleware,
+	api providers.APIMiddleware,
 	handlers *providers.Handlers,
 	healthChecks httpserver.HealthChecks,
-) http.Handler {
-	return InitRouter(cfg, globalMw, auth, tenantMw, handlers, healthChecks)
+) (http.Handler, error) {
+	for i, mw := range api {
+		if mw == nil {
+			return nil, fmt.Errorf("router: API middleware %d is nil", i)
+		}
+	}
+	return InitRouter(cfg, globalMw, api, handlers, healthChecks), nil
 }
 
 var ProviderSet = wire.NewSet(
-	// Default tenant middleware (noop)
-	NewNoopTenantMiddleware,
-	wire.Bind(new(TenantMiddleware), new(*NoopTenantMiddleware)),
-
 	ProvideRouter,
 )

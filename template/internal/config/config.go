@@ -21,13 +21,12 @@ type Config struct {
 	// Set it at deploy time, for example APP_VERSION=v1.2.3.
 	Version string `yaml:"APP_VERSION" env:"APP_VERSION"`
 
-	Logger      `yaml:"LOGGER" env:"LOGGER"`
-	HttpServer  `yaml:"HTTP_SERVER" env:"HTTP_SERVER"`
-	Database    `yaml:"DATABASE" env:"DATABASE"`
-	Migrations  `yaml:"MIGRATIONS" env:"MIGRATIONS"`
-	Redis       `yaml:"REDIS" env:"REDIS"`
-	JWT         `yaml:"JWT" env:"JWT"`
-	TenantCache `yaml:"TENANT_CACHE" env:"TENANT_CACHE"`
+	Logger     `yaml:"LOGGER" env:"LOGGER"`
+	HttpServer `yaml:"HTTP_SERVER" env:"HTTP_SERVER"`
+	Database   `yaml:"DATABASE" env:"DATABASE"`
+	Migrations `yaml:"MIGRATIONS" env:"MIGRATIONS"`
+	Redis      `yaml:"REDIS" env:"REDIS"`
+	JWT        `yaml:"JWT" env:"JWT"`
 }
 
 type Logger = logging.Config
@@ -77,12 +76,6 @@ type Redis struct {
 // JWT configures token verification (and signing for token issuers).
 type JWT = authservice.Config
 
-// TenantCache configures the tenant cache. Its Redis keys live under
-// REDIS_KEY_PREFIX in the "tenant" namespace.
-type TenantCache struct {
-	TTL time.Duration `yaml:"TENANT_CACHE_TTL" env:"TENANT_CACHE_TTL" env-default:"3m"`
-}
-
 type identity struct {
 	Env         string `yaml:"APP_ENV" env:"APP_ENV"`
 	ServiceName string `yaml:"SERVICE_NAME" env:"SERVICE_NAME"`
@@ -101,7 +94,6 @@ func Sections() []sections.Section {
 		{Key: "migrations", Value: &Migrations{}, YAMLPath: []string{"MIGRATIONS"}, LegacyEnv: true},
 		{Key: "redis", Value: &Redis{}, YAMLPath: []string{"REDIS"}, LegacyEnv: true},
 		{Key: "auth", Value: &JWT{}, YAMLPath: []string{"JWT"}, LegacyEnv: true},
-		{Key: "tenant", Value: &TenantCache{}, YAMLPath: []string{"TENANT_CACHE"}, LegacyEnv: true},
 	}
 }
 

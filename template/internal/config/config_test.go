@@ -49,12 +49,11 @@ func TestHTTPServerTimeoutsFromYAML(t *testing.T) {
 func TestSectionsLoadOnlyWhenSelected(t *testing.T) {
 	t.Setenv("REDIS_PORT", "invalid-secret")
 	t.Setenv("JWT_EXPIRE", "invalid-secret")
-	t.Setenv("TENANT_CACHE_TTL", "invalid-secret")
 	cfg, err := LoadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Redis.Port != 0 || cfg.JWT.Expiration != 0 || cfg.TenantCache.TTL != 0 {
+	if cfg.Redis.Port != 0 || cfg.JWT.Expiration != 0 {
 		t.Fatal("disabled sections loaded")
 	}
 	if err := cfg.LoadSection("redis", []string{"REDIS"}, &cfg.Redis); err == nil || strings.Contains(err.Error(), "invalid-secret") {

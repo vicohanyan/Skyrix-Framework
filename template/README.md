@@ -37,10 +37,17 @@ providers it needs. Long-running binaries run their components with
 | `cmd/cobra`   | two lazily built graphs: application (config, logger, jobs, application command deps) and database (config, logger, PostgreSQL (GORM), models, seeders) | Console: database, jobs, scaffolding, platform commands |
 | `cmd/worker`  | config, logger, platform modules                                                               | Background work, no HTTP; an empty runtime until the application adds components |
 
-`providers` also defines `RedisSet`, `AuthProviderSet` and
-`TenantProviderSet`; no binary includes them by default. Add a set to a
-binary's `wire.go` when it needs Redis, the auth stores or the tenant
-middleware, and add its lifecycle component to the binary's runtime.
+`providers` also defines `RedisSet` and `AuthProviderSet`; no binary includes
+them by default. Add a set to a binary's `wire.go` when it needs Redis or the
+auth stores, and add its lifecycle component to the binary's runtime.
+
+The `/api/v1` routes run behind `providers.APIMiddleware`, an ordered
+middleware chain (the first element runs first). `providers.ProvideAPIMiddleware`
+in `cmd/http/wire.go` chooses it; by default it holds only authentication. To
+change the chain, replace that provider in the binary's graph with one that
+returns the complete chain in the wanted order. The router only applies the
+chain; `/health` and `/metrics` are outside it. Tenant resolution is optional
+and disabled by default (see [Tenants](#tenants)).
 
 ## Authentication
 
@@ -145,7 +152,6 @@ in `internal/config/config.go`.
 | `DATABASE`     | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `DB_MAIN_SCHEMA`, `DB_SSLMODE` (disable) |
 | `REDIS`        | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASS`, `REDIS_DB`, `REDIS_KEY_PREFIX`              |
 | `JWT`          | `JWT_PUBLIC_KEY_PATH`, `JWT_ALGORITHM`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_ALLOWED_ROLES`, ... |
-| `TENANT_CACHE` | `TENANT_CACHE_TTL`                                                                    |
 
 `DB_SSLMODE` is the PostgreSQL (libpq) sslmode. The default `disable`, also
 used when the value is empty, turns PostgreSQL TLS off; it fits a database on
@@ -203,7 +209,7 @@ application supplies only its data: GORM models and seeders for
 
 `config:env` lists all fields sorted by section key and env name, with their Go
 types and declared defaults. `--section` accepts the keys `app`, `logger`, `http`,
-`database`, `redis`, `auth` and `tenant`; unknown keys return an error. Secret
+`database`, `migrations`, `redis` and `auth` (plus `tenant` once enabled, see [Tenants](#tenants)); unknown keys return an error. Secret
 defaults are `[REDACTED]`. Empty strings and zeroes represent unset defaults,
 not required settings supplied at runtime. YAML development values are not defaults
 in this reference. The command reads neither YAML nor environment values and
@@ -287,6 +293,51 @@ be available when running diff. Existing custom atlas.hcl files are not read or
 modified by this command; transfer their dev setting to MIGRATIONS_DEV_URL.
 Advanced custom Atlas projects can still be run directly through the Atlas CLI.
 
+## Tenants
+
+Schema-per-tenant resolution is the separate local library
+`gitlab.com/skyrix-lib/tenant` (`/var/www/skyrix-tenant-lib`). The Template
+does not enable it: no binary requires or imports the module, loads
+`TENANT_CACHE`, or builds its cache or repository, and the default API chain is
+authentication only. That is intentional. Tenant needs PostgreSQL (the
+`tenants` table in the main schema) and Redis (the shared tenant cache).
+
+The working example is kept in the framework repository, not in the Template:
+`integration/testdata/tenant` (paths below are relative to it). The framework
+integration harness (`integration/tenant_fixture_test.go`, `TestTenantFixture`)
+overlays it on a copy of the Template, generates Wire, builds it and checks the
+middleware. To enable tenants in a project made from the Template:
+
+1. `go.mod`: require `gitlab.com/skyrix-lib/tenant` (for local development
+   `v0.0.0` with `replace gitlab.com/skyrix-lib/tenant => ../../skyrix-tenant-lib`;
+   no release is published yet).
+2. Copy `providers/tenant.go` (`TenantSet` and `ProvideTenantAPIMiddleware`)
+   and `internal/config/tenant.go` from the example into the same places; list the
+   section in `config.Sections()`:
+   `{Key: "tenant", Value: &TenantCache{}, YAMLPath: []string{"TENANT_CACHE"}, LegacyEnv: true}`.
+   Optionally add `TENANT_CACHE: {TENANT_CACHE_TTL: 3m}` to the YAML files.
+3. `cmd/http/wire.go`: add `providers.RedisSet` and `providers.TenantSet`, and
+   replace `providers.ProvideAPIMiddleware` with
+   `providers.ProvideTenantAPIMiddleware` (auth first, then tenant), as in
+   the example's `cmd/http/wire.go`. Regenerate with `go tool wire gen ./cmd/http`.
+4. The `tenants` table: add `&tenantEntity.Tenant{}` to
+   `tools/schemaloader/main.go` and run `cobra db migrate:diff create_tenants`,
+   then `cobra db migrate`; for development also to `internal/database.Models`
+   (see the example's `internal/database/database.go` and
+   `tools/schemaloader/main.go`). Create every tenant schema and its tables yourself:
+   `db migrate` migrates only the main schema.
+
+Behaviour: `X-Tenant` (a tenant identifier for the lookup, never a schema
+name) is tried first, then `Host`. An unknown or inactive tenant is 404, a host
+without tenant is 404, a failed lookup is 503, and a cancelled request stops.
+Serving requests without any tenant identifier in the main schema is an
+explicit policy (`middleware.Options{MainFallback: true}`). `X-Forwarded-Host`
+is read only with `schemaResolver.Options{TrustForwardedHost: true}`, which
+requires a proxy that overwrites the header. Resolving a tenant does not
+authorize the caller for it: check membership in the application. CRUD runs in
+the tenant schema through the gormdb plugin; Raw/Row/Scan and joins must be
+schema-qualified or run in `WithinTransaction`. See the Tenant README.
+
 ## HTTP endpoints
 
 - `GET /health` — health check of the registered dependencies (PostgreSQL)
@@ -351,7 +402,8 @@ The existing providers and domain layout is unchanged: several sets can share
 one provider file, and domains keep their own `ProviderSet`. A driver imported
 by the shared providers package can appear in `go list -deps` without being
 constructed or started. Independent driver selection and generation repeatability
-are covered by `providers/platform_selection_test.go`.
+are covered by the framework integration harness
+(`integration/platform_selection_test.go` in the framework repository).
 
 ## Layout
 

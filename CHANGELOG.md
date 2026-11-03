@@ -14,6 +14,47 @@ compatibility layer for v0.2.x applications: services and modules built for
 v0.2.x must be migrated before upgrading. Modules released for v0.3.0 do not
 support v0.2.x.
 
+### Integration harness outside Template
+
+- Add `integration/`, a separate test-only module (in `go.work`) for fixtures
+  that copy the Template. Move `TestPlatformDriverSelection` (platformgen,
+  platform/config commands, Template Auth providers) and the Tenant fixture
+  (`TestTenantFixture`, `TestDefaultTemplateWithoutTenant`,
+  `integration/testdata/tenant`) out of `template/providers` and
+  `template/testdata`. Add `TestTemplateHasNoFrameworkFixtures`.
+- Missing fixtures or external libraries (`SKYRIX_AUTH_LIB`,
+  `SKYRIX_TENANT_LIB`) fail the harness instead of skipping it.
+- Template keeps only application tests; its providers, Wire graphs and
+  behaviour are unchanged. Template documentation points to the moved example.
+
+### Local Tenant extraction and API middleware chain
+
+- Move `extensions/tenant` with its tests to the separate local module
+  `gitlab.com/skyrix-lib/tenant` (`/var/www/skyrix-tenant-lib`); no copy
+  remains in framework, and framework must not import it
+  (`TestFrameworkDoesNotImportTenant`). Tenant builds on the neutral
+  `engine/scope` and `gormdb`. No repository, release or tag is published;
+  `v0.0.0` with a relative `replace` is a local placeholder.
+- Template: Tenant is disabled by default. Remove `providers/tenant.go`,
+  `TenantProviderSet`, the `TENANT_CACHE` section and the tenant model from
+  `db automigrate`; default binaries neither require nor import the module.
+  Existing tables and migrations are untouched.
+- Template router: replace the ignored `TenantMiddleware`/Noop parameter (and
+  the explicit auth parameter) with `providers.APIMiddleware`, an ordered
+  middleware chain for `/api/v1` chosen by `ProvideAPIMiddleware` (default:
+  auth only). `/health` and `/metrics` stay outside it. A fixture
+  (`integration/testdata/tenant`, `TestTenantFixture`) generates and runs the
+  opt-in tenant graph.
+- Tenant fixes: an unknown or inactive tenant header is 404 without domain or
+  main fallback; an unknown host is 404 unless the application opts into
+  `middleware.Options.MainFallback`; lookup failures are 503 and never become
+  not found or main; a cancelled request never reaches the next handler;
+  `ActiveTo` is honoured; the in-memory cache is bounded by the cache TTL
+  counted from the database load (also across Redis); stored schema case is
+  preserved; `X-Forwarded-Host` is read only with `TrustForwardedHost`; `Vary`
+  names the configured tenant header on every response. Tenant queries
+  qualify the main schema explicitly, including `ListDomains`.
+
 ### PostgreSQL sslmode and safe connection errors
 
 - Template: add `DB_SSLMODE` to the `DATABASE` section (YAML and environment,

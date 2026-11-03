@@ -11,9 +11,12 @@ It is a library: services import it. It provides
 - hosts — the HTTP server (`httpserver`), the Cobra console (`cobra/console`,
   `cobra/corecmd`, module commands in `cobra`) and the database commands with the SQL migration runner
   (`database/dbcmd`, `database/migrate`);
-- extensions — `extensions/tenant` (schema-per-tenant resolution);
 - optional authentication — the separate `gitlab.com/skyrix-lib/auth` library,
   composed by Template; framework does not import Auth;
+- optional schema-per-tenant resolution — the separate
+  `gitlab.com/skyrix-lib/tenant` library on the neutral `engine/scope` and
+  `gormdb`; framework does not import it and Template does not enable it by
+  default;
 - tooling — `cmd/platformgen`, `scaffold/makecmd`, `logger`, `validation`.
 
 New services start from the application template in [`template/`](template/),
@@ -227,7 +230,7 @@ New sections should use derived names and initialized Go defaults instead.
 Env collisions are checked across the explicit composition, including overrides.
 
 `LoadConfig` now loads application identity and logger only. Wire section providers
-load HTTP/Postgres/Auth/Redis/Tenant only when used by the binary; migration
+load HTTP/Postgres/Auth/Redis only when used by the binary; migration
 settings explicitly select Postgres. Adding a section requires an explicit typed
 provider that loads and returns its consumer-owned configuration; this needs no
 network provider. ConfigSet alone does not enable infrastructure. Driver adapters
@@ -390,6 +393,29 @@ and modes and removing only newly created empty directories. External edits
 detected while publishing/rolling back are preserved and reported. Failed Atlas
 hashing also restores the previous atlas.sum and removes the new migration.
 
+## Integration harness
+
+`integration/` is a separate test-only Go module
+(`gitlab.com/skyrix-lib/framework/integration`, listed in `go.work`). Its tests
+copy the Template into temporary projects and check what does not belong in a
+copied Template: framework generators and platform commands
+(`TestPlatformDriverSelection`, also the Template's Auth providers with the
+external Auth library), the opt-in Tenant wiring from `integration/testdata/tenant`
+(`TestTenantFixture`: overlay, Wire generated twice, build, vet and the
+middleware test of the generated graph), and that the default Template neither
+imports Tenant nor carries framework fixtures. It imports nothing outside the
+standard library, so framework and Template gain no dependency on Auth, Tenant
+or this directory.
+
+```bash
+cd integration && go test -count=1 ./...
+```
+
+Auth and Tenant default to `../skyrix-auth-lib` and `../skyrix-tenant-lib` next
+to the framework directory; override them with `SKYRIX_AUTH_LIB` and
+`SKYRIX_TENANT_LIB`. A missing library or fixture fails the test with the
+missing path; nothing is skipped. No database is used.
+
 ## Local Auth library
 
 Auth lives in the separate local module `gitlab.com/skyrix-lib/auth`, currently
@@ -407,6 +433,7 @@ use (
     /var/www/skyrix-framework
     /var/www/skyrix-framework/template
     /var/www/skyrix-auth-lib
+    /var/www/skyrix-tenant-lib
 )
 ```
 
@@ -420,6 +447,19 @@ not published releases. Relative `replace` directives support this local layout;
 fixture modules rewrite those paths to absolute paths. `GOWORK=off` with local
 replacements is not evidence of a standalone build from published dependencies.
 No Auth repository or release has been published by this extraction.
+
+## Local Tenant library
+
+Tenant lives in the separate local module `gitlab.com/skyrix-lib/tenant`,
+currently at `/var/www/skyrix-tenant-lib` (formerly `extensions/tenant`; no
+copy remains in framework). Framework provides the neutral request scope
+(`engine/scope`) and schema-aware `gormdb`; Tenant resolves the tenant of a
+request and stores its schema with `scope.WithSchema`. Framework never imports
+Tenant (`TestFrameworkDoesNotImportTenant`). Template does not enable it: its
+default binaries neither require nor import the module. The opt-in wiring is
+shown in [Template tenants](template/README.md#tenants) and tested by the
+[integration harness](#integration-harness) (`integration/testdata/tenant`). Like Auth, `v0.0.0` with a relative `replace` is a local placeholder;
+no repository, release or tag exists yet. Use the external workspace above.
 
 ### Scoped GORM transactions
 

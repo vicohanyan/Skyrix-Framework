@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -82,8 +83,7 @@ func TestRoutesRequireToken(t *testing.T) {
 					Recover:        frameworkmiddleware.NewRecoverMiddleware(noopLogger{}),
 					GzipDecompress: frameworkmiddleware.NewGzipDecompressMiddleware(noopLogger{}),
 				},
-				auth,
-				NewNoopTenantMiddleware(),
+				providers.ProvideAPIMiddleware(auth),
 				&providers.Handlers{ExampleTask: handlers.NewExampleTaskHandler(noopLogger{}, validation.NewValidator(), stubTaskService{})},
 				nil,
 			)
@@ -98,6 +98,47 @@ func TestRoutesRequireToken(t *testing.T) {
 				t.Fatalf("GET %s status = %d, want %d; body: %s", test.path, recorder.Code, test.want, recorder.Body.String())
 			}
 		})
+	}
+}
+
+// TestAPIMiddlewareChain checks that the router applies the given chain, in
+// its order, to /api/v1 only, and rejects nil entries.
+func TestAPIMiddlewareChain(t *testing.T) {
+	var calls []string
+	mark := func(name string) func(http.Handler) http.Handler {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls = append(calls, name)
+				w.Header().Add("X-Chain", name)
+				next.ServeHTTP(w, r)
+			})
+		}
+	}
+	globalMw := &providers.GlobalMiddleware{
+		Recover:        frameworkmiddleware.NewRecoverMiddleware(noopLogger{}),
+		GzipDecompress: frameworkmiddleware.NewGzipDecompressMiddleware(noopLogger{}),
+	}
+	taskHandlers := &providers.Handlers{ExampleTask: handlers.NewExampleTaskHandler(noopLogger{}, validation.NewValidator(), stubTaskService{})}
+	handler, err := ProvideRouter(&config.HttpServer{Timeout: 5 * time.Second}, globalMw,
+		providers.APIMiddleware{mark("first"), mark("second")}, taskHandlers, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]string{"/api/v1/examples/tasks/": "first,second", "/health": "", "/metrics": ""} {
+		calls = nil
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, http.NoBody))
+		if got := strings.Join(calls, ","); got != want || recorder.Code != http.StatusOK {
+			t.Errorf("GET %s: chain %q, status %d; want %q, 200", path, got, recorder.Code, want)
+		}
+	}
+
+	// An empty chain is allowed (no API middleware); nil entries are not.
+	if _, err := ProvideRouter(&config.HttpServer{}, globalMw, nil, taskHandlers, nil); err != nil {
+		t.Fatalf("empty chain: %v", err)
+	}
+	if _, err := ProvideRouter(&config.HttpServer{}, globalMw, providers.APIMiddleware{mark("a"), nil}, taskHandlers, nil); err == nil {
+		t.Fatal("nil middleware accepted")
 	}
 }
 

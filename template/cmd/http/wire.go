@@ -29,6 +29,9 @@ func buildHTTPApp() (*httpApp, func(), error) {
 		providers.HandlerProviderSet,
 		providers.GlobalMiddlewareProviderSet,
 		providers.AuthVerifierSet,
+		// Middleware chain of /api/v1, in order. Replace this provider to
+		// change the chain (for example to add tenant resolution).
+		providers.ProvideAPIMiddleware,
 
 		// 6. HTTP layer
 		validation.NewValidator,

@@ -51,6 +51,7 @@ var foundationForbidden = depcheck.HasPrefix(
 	module+"/engine",
 	module+"/extensions",
 	"gitlab.com/skyrix-lib/auth",
+	"gitlab.com/skyrix-lib/tenant",
 	module+"/httpserver",
 	module+"/cobra",
 	module+"/database",
@@ -81,6 +82,7 @@ func TestFoundationForbiddenPaths(t *testing.T) {
 		module + "/cobra/console", module + "/database/migrate",
 		module + "/scaffold/makecmd", module + "/cmd/platformgen",
 		"gitlab.com/skyrix-lib/template/providers",
+		"gitlab.com/skyrix-lib/tenant/middleware",
 		"gitlab.com/skyrix-lib/eventbus/platform",
 		"github.com/jackc/pgx/v5/stdlib", "github.com/redis/go-redis/v9",
 		"gorm.io/gorm", "gorm.io/driver/postgres", "github.com/nats-io/nats.go",
@@ -103,4 +105,10 @@ func TestFoundationForbiddenPaths(t *testing.T) {
 
 func TestFrameworkDoesNotImportAuth(t *testing.T) {
 	depcheck.Forbid(t, module, depcheck.HasPrefix("gitlab.com/skyrix-lib/auth"))
+}
+
+// Tenant is the separate gitlab.com/skyrix-lib/tenant module built on the
+// neutral engine/scope and gormdb; the framework never imports it.
+func TestFrameworkDoesNotImportTenant(t *testing.T) {
+	depcheck.Forbid(t, module, depcheck.HasPrefix("gitlab.com/skyrix-lib/tenant"))
 }

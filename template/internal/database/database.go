@@ -5,17 +5,17 @@ package database
 
 import (
 	"gitlab.com/skyrix-lib/framework/database/dbcmd"
-	tenantEntity "gitlab.com/skyrix-lib/framework/extensions/tenant/entity"
 	exampleEntity "gitlab.com/skyrix-lib/template/internal/domain/example/entity"
 
 	"github.com/goforj/wire"
 )
 
-// Models returns the GORM entities synchronised by "db automigrate".
+// Models returns the GORM entities synchronised by "db automigrate". The
+// optional gitlab.com/skyrix-lib/tenant model is not listed: an application
+// that enables tenants adds it here (see README "Tenants").
 func Models() dbcmd.Models {
 	return dbcmd.Models{
 		&exampleEntity.Task{},
-		&tenantEntity.Tenant{},
 	}
 }
 

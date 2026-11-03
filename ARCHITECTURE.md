@@ -20,7 +20,7 @@ uses the framework through `replace gitlab.com/skyrix-lib/framework => ..`.
 ```text
 template (copied)     cmd/http · cmd/cobra · cmd/worker · providers · internal/domain/...
                           │ imports
-extensions            extensions/tenant · external Auth (application composition)
+extensions            external Auth · external Tenant (application composition)
                           │
 hosts                 httpserver · cobra/console (+ corecmd) · database/dbcmd, migrate
                           │
@@ -71,7 +71,8 @@ The `engine` root package contains no code; the modules are subpackages.
 schema of a request, and it knows nothing about where the schema comes from:
 
 1. an extension resolves the schema and stores it with `scope.WithSchema`
-   (the tenant middleware does this for every request);
+   (for example the middleware of the separate Tenant library, when the
+   application adds it to its API middleware chain);
 2. `gormdb.Database.WithContext(ctx)` binds context and schema metadata without
    issuing SQL or changing pooled connection settings;
 3. the registered `gormdb.Plugin` qualifies primary CRUD tables, using main or
@@ -161,12 +162,16 @@ not know them.
   RSA key, and `revocation/redis` optionally implements access-token JTI
   revocation. Legacy full-token blacklist, live sessions, passport and refresh
   stores remain separate. Template composes it; framework must not import it.
-- `extensions/tenant`: `entity.Tenant` (a `scope.Main` model), `repository`
-  and `service` (in-memory and Redis cache), `schemaResolver` (by header or
-  domain), `middleware` (`TenantMiddleware` resolves the schema and stores it
-  with `scope.WithSchema`; `CorsMiddleware`), `context` (how the tenant was
-  resolved). The application owns the `tenants` table and its migrations; see
-  [extensions/tenant/README.md](extensions/tenant/README.md).
+- Schema-per-tenant resolution is the separate `gitlab.com/skyrix-lib/tenant`
+  module (`/var/www/skyrix-tenant-lib`, formerly `extensions/tenant`). It
+  depends on the public `engine/scope`, `engine/postgres/gormdb`,
+  `engine/redis` and `logger` packages; framework never imports it
+  (`TestFrameworkDoesNotImportTenant`). Its middleware resolves a tenant by
+  header or host and stores the tenant's schema with `scope.WithSchema`;
+  `gormdb` then routes CRUD to that schema. Template does not enable it by
+  default; an application adds its providers to the HTTP Wire graph and its
+  `Handle` to the API middleware chain. The application owns the `tenants`
+  table and its migrations.
 
 EventBus (NATS) is a platform driver in a separate module,
 `gitlab.com/skyrix-lib/eventbus`; the template does not include it and
@@ -273,20 +278,23 @@ Each binary has its own `wire.go` and includes only the provider sets it uses.
 
 | Binary       | Provider sets                                                                                                                   | Runtime components (start order)        |
 |--------------|---------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------|
-| `cmd/http`   | `ConfigSet`, `PostgresSet`, `ProvideHTTPPlatform`, `DomainProviderSet`, handlers, global middleware, `AuthVerifierSet`, router, `HTTPProviderSet` | postgres → platform modules → HTTP host |
+| `cmd/http`   | `ConfigSet`, `PostgresSet`, `ProvideHTTPPlatform`, `DomainProviderSet`, handlers, global middleware, `AuthVerifierSet`, `ProvideAPIMiddleware`, router, `HTTPProviderSet` | postgres → platform modules → HTTP host |
 | `cmd/cobra`  | `buildApp`: `ConfigSet`, `ConsoleJobProviderSet`, `commands.ProviderSet`; `buildDatabase`: `ConfigSet`, `PostgresSet`, `DatabaseCommandSet` | — (runs one command)                    |
 | `cmd/worker` | `ConfigSet`, `ProvideWorkerPlatform`                                                                                                      | platform modules (none by default)      |
 
-`RedisSet`, `AuthProviderSet` (auth with Redis stores) and
-`TenantProviderSet` exist in `providers` but no binary includes them by
-default. The HTTP binary protects `/api/v1` with the framework auth
-middleware through `AuthVerifierSet` (token verification without Redis);
-`/health` and `/metrics` stay open.
+`RedisSet` and `AuthProviderSet` (auth with Redis stores) exist in
+`providers` but no binary includes them by default. The router applies
+`providers.APIMiddleware`, an ordered chain chosen by a provider of the
+binary's graph, to `/api/v1`; it knows nothing about the elements. The default
+`ProvideAPIMiddleware` returns only bearer-token authentication
+(`AuthVerifierSet`, token verification without Redis). `/health` and
+`/metrics` are outside the chain and stay open. Tenant resolution is not part
+of the default chain; see [template/README.md](template/README.md#tenants).
 
 Assembly order rule: from the root of the dependency graph to the leaves, both
 in `wire.Build` and in the runtime: engine infrastructure (config, logger,
-PostgreSQL, Redis) → platform modules (platform drivers such as EventBus,
-tenant, auth) → domains and the hosts that serve them. `kernel.Runtime` stops in reverse, so a host never
+PostgreSQL, Redis) → platform modules (platform drivers such as EventBus)
+→ domains and the hosts that serve them. `kernel.Runtime` stops in reverse, so a host never
 runs without the infrastructure it uses.
 
 Every console command is described once, as a `console.Command`: metadata
@@ -367,6 +375,7 @@ graph as test inputs, so run these tests with `-count=1`.
 | `config` and `logger` do not reach engine, extensions, hosts, generators, concrete drivers or Template, directly or transitively | `internal/depcheck/boundaries_test.go` |
 | `kernel/...` imports only the standard library                                                   | `kernel/deps_test.go`                               |
 | `engine/...` and `kernel/...` do not reach `extensions/...`, directly or transitively            | `internal/depcheck/boundaries_test.go`              |
+| framework does not reach the external `gitlab.com/skyrix-lib/auth` and `gitlab.com/skyrix-lib/tenant` modules | `internal/depcheck/boundaries_test.go` |
 | `kernel/...`, `engine`, `engine/postgres`, `engine/scope/...`, `engine/redis/...`, `engine/jobs/...` do not reach `gorm.io/...`; GORM stays in `engine/postgres/gormdb` | `internal/depcheck/boundaries_test.go` |
 | `engine/postgres` imports only the standard library, the pgx `database/sql` driver and `kernel`  | `engine/postgres/postgres_test.go`                  |
 | `engine/redis/...` imports only the standard library, go-redis, `kernel` and `logger`            | `engine/redis/deps_test.go`                         |
@@ -380,6 +389,7 @@ graph as test inputs, so run these tests with `-count=1`.
 | Contents | kernel, engine, hosts, extensions, generators | `cmd/*` binaries and Wire graphs, `providers`, `internal/config`, domains, handlers, router, migrations, Compose, Dockerfiles |
 | Changes | versioned (v0.3 is not compatible with v0.2.x, see CHANGELOG.md) | owned by the service after copying |
 | Example code | — | `internal/domain/example`, `internal/commands/HelloCommand.go`, `internal/jobs/systemPingJob.go` |
+| Tests | unit tests per package; `integration/` (separate test-only module): Template copies for generators, platform commands and the opt-in Auth/Tenant wiring | tests of the application, its providers, Wire graphs and example domain; no framework fixtures or `testdata` |
 
 The `make uow <domain-path>/<name>` generator uses the shared embedded renderer,
 project `stubs/skyrix/uow.stub` override and atomic AST registration. It creates a

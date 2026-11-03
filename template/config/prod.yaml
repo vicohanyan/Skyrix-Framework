@@ -46,6 +46,3 @@ JWT:
   # Example: JWT_ALLOWED_ROLES: [customer, admin]
   # or JWT_ALLOWED_ROLES=customer,admin in the environment.
   JWT_ALLOWED_ROLES: []
-
-TENANT_CACHE:
-  TENANT_CACHE_TTL: 3m

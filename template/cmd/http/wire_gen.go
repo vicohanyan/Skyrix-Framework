@@ -80,7 +80,7 @@ func buildHTTPApp() (*httpApp, func(), error) {
 	}
 	options := middleware3.OptionsFromConfig(serviceConfig)
 	authMiddleware := middleware3.NewAuthMiddleware(validator, loggerInterface, options)
-	noopTenantMiddleware := router.NewNoopTenantMiddleware()
+	apiMiddleware := providers.ProvideAPIMiddleware(authMiddleware)
 	validationValidator := validation.NewValidator()
 	gormdbDatabase, err := providers.ProvideDatabaseService(db, database)
 	if err != nil {
@@ -96,7 +96,12 @@ func buildHTTPApp() (*httpApp, func(), error) {
 		ExampleTask: exampleTaskHandler,
 	}
 	healthChecks := providers.ProvideHealthChecks(component)
-	handler := router.ProvideRouter(httpServer, globalMiddleware, authMiddleware, noopTenantMiddleware, providersHandlers, healthChecks)
+	handler, err := router.ProvideRouter(httpServer, globalMiddleware, apiMiddleware, providersHandlers, healthChecks)
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	httpserverOptions := providers.ProvideHTTPServerOptions(httpServer)
 	server := httpserver.NewServer(handler, httpserverOptions)
 	host := httpserver.NewHost(server, loggerInterface)

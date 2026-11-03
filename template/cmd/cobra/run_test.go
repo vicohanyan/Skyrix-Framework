@@ -183,7 +183,7 @@ func chdirToProject(t *testing.T) {
 func TestApplicationIgnoresDisabledSections(t *testing.T) {
 	setConsoleEnv(t, "127.0.0.1:1", "127.0.0.1:1")
 	chdirToProject(t)
-	for _, key := range []string{"DB_PORT", "REDIS_PORT", "JWT_EXPIRE", "TENANT_CACHE_TTL"} {
+	for _, key := range []string{"DB_PORT", "REDIS_PORT", "JWT_EXPIRE"} {
 		t.Setenv(key, "invalid-disabled-value")
 	}
 	if err := run(context.Background(), []string{"hello"}, &strings.Builder{}, &strings.Builder{}); err != nil {
