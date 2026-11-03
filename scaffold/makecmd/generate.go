@@ -24,7 +24,7 @@ type selection struct {
 func parseSelection(kind, raw string) (selection, error) {
 	var out selection
 	parts := strings.Split(raw, "/")
-	if kind != "domain" && kind != "entity" && kind != "repository" && kind != "service" && kind != "handler" && len(parts) != 1 {
+	if kind != "domain" && kind != "entity" && kind != "repository" && kind != "service" && kind != "uow" && kind != "handler" && len(parts) != 1 {
 		return out, fmt.Errorf("%s accepts one name (no slashes)", kind)
 	}
 	var names []support.Name
@@ -51,7 +51,7 @@ func parseSelection(kind, raw string) (selection, error) {
 			parts[i] = name.Package
 		}
 		out.domain = strings.Join(parts, "/")
-	} else if kind == "entity" || kind == "repository" || kind == "service" || kind == "handler" {
+	} else if kind == "entity" || kind == "repository" || kind == "service" || kind == "uow" || kind == "handler" {
 		if len(parts) < 2 {
 			return out, fmt.Errorf("%s needs <domain-path>/<name>, for example example/invoice", kind)
 		}
@@ -113,6 +113,8 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 		data.Package = "repository"
 	case "service":
 		data.Package = "services"
+	case "uow":
+		data.Package = "unitofwork"
 	case "handler":
 		data.Package = "handlers"
 	case "command":
@@ -176,16 +178,19 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 		}); err != nil {
 			return "", err
 		}
-	case "repository", "service":
+	case "repository", "service", "uow":
 		sub, suffix := "repository", "Repository"
 		if kind == "service" {
 			sub, suffix = "services", "Service"
+		}
+		if kind == "uow" {
+			sub, suffix = "unitOfWork", "UOW"
 		}
 		if err := create(kind, filepath.Join(domainPath, sub, data.Var+suffix+".go"), data.Type+suffix, "New"+data.Type+suffix); err != nil {
 			return "", err
 		}
 		if err := op.edit(filepath.Join(domainPath, "provider.go"), func(e *editor) error {
-			alias, err := e.importName(domainImport+"/"+sub, sub)
+			alias, err := e.importName(domainImport+"/"+sub, strings.ToLower(sub))
 			if err != nil {
 				return err
 			}

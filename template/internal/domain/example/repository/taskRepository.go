@@ -20,8 +20,11 @@ func NewTaskRepository(db *gormdb.Database) *TaskRepository {
 	return &TaskRepository{db: db}
 }
 
-func (r *TaskRepository) WithTx(tx *gorm.DB) *TaskRepository {
-	return &TaskRepository{db: &gormdb.Database{DB: tx, MainSchema: r.db.MainSchema}}
+// WithTx copies the repository and keeps its dependencies on the supplied transaction.
+func (r *TaskRepository) WithTx(tx *gormdb.Database) *TaskRepository {
+	copy := *r
+	copy.db = tx
+	return &copy
 }
 
 func (r *TaskRepository) Create(ctx context.Context, task *entity.Task) (*entity.Task, error) {

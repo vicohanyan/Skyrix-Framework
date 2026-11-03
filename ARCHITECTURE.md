@@ -72,14 +72,68 @@ schema of a request, and it knows nothing about where the schema comes from:
 
 1. an extension resolves the schema and stores it with `scope.WithSchema`
    (the tenant middleware does this for every request);
-2. `gormdb.Database.WithContext(ctx)` reads `scope.SchemaFrom(ctx)` and sets
-   `search_path` to `<schema>, <main>, public`, or `<main>, public` when the
-   context carries no schema;
-3. `gormdb.Plugin`, when registered with `db.Use`, qualifies the table of
-   every query/create/update/delete callback: `scope.Main` models use the main
-   schema, all other models the request schema (main when there is none).
-   Statements that bypass these callbacks (`Raw`, `Row`, `Scan`) rely on
-   `search_path` only.
+2. `gormdb.Database.WithContext(ctx)` binds context and schema metadata without
+   issuing SQL or changing pooled connection settings;
+3. the registered `gormdb.Plugin` qualifies primary CRUD tables, using main or
+   request scope. Raw/Row/Scan, joins and explicit table expressions require
+   explicit SQL qualification or a pinned `WithinTransaction` operation.
+
+### Scoped GORM transactions
+
+`Database.WithContext(ctx)` binds context and metadata for the registered schema
+plugin; it executes no SQL and does not change a pooled connection's search_path.
+The plugin qualifies the primary CRUD table (main models use the main schema;
+scoped models use `scope.SchemaFrom(ctx)`, falling back to main). It does not
+rewrite joins, Raw/Row/Scan, explicit table expressions or arbitrary SQL.
+
+Use a domain UoW and `WithinTransaction` for unqualified SQL and multi-repository
+operations:
+
+```go
+err := database.WithinTransaction(ctx, func(tx *gormdb.Database) error {
+    // Both repository copies must use this tx; preserve logger/other dependencies.
+    orders := orderRepo.WithTx(tx)
+    history := historyRepo.WithTx(tx)
+    if err := orders.Save(ctx, order); err != nil { return err }
+    return history.Append(ctx, entry)
+})
+```
+
+Before the callback, GORM begins a transaction with ctx and gormdb checks
+`SET LOCAL search_path`. The wrapper retains the same SQL transaction, main
+schema and selected scope. WithContext on that wrapper accepts the same effective
+schema, including derived contexts with new deadlines; incompatible scope returns
+`ErrScopeMismatch` in the GORM session's Error. The original transaction context
+still controls the maximum lifetime. An empty main schema means `public`.
+Schema names are literal identifiers: case and whitespace are preserved, embedded
+quotes escaped, and NUL rejected. No silent lowercasing is performed.
+
+Callback nil commits; an error or panic rolls back through GORM, with panic
+propagated. Begin/SET LOCAL/commit errors are returned; errors retain wrapping for
+errors.Is/As. Rollback errors follow GORM's behavior and do not replace the
+callback error. No automatic retries: a failed commit can have an unknown result.
+
+Nested calls **on tx** use GORM savepoints in the same SQL transaction. Inner
+success is provisional until outer commit; inner failure rolls back to its
+savepoint. Scope changes and unmanaged raw GORM transactions are rejected, as is
+nesting with DisableNestedTransaction enabled. Calling the original root database
+starts independent work; context does not propagate a transaction automatically.
+Do not share a tx concurrently, commit it manually, or retain it after callback.
+
+Migration: replace `db.WithContext(ctx).Transaction(...)` with
+`db.WithinTransaction(ctx, func(tx *gormdb.Database) error { ... })`; adapt explicit
+repository WithTx methods to keep this wrapper and copy other dependencies.
+Ordinary WithContext no longer guarantees search_path for arbitrary SQL. Use
+WithinTransaction or explicitly qualify every relevant SQL identifier. Do not
+replace SET with SET LOCAL outside a transaction. Deprecated SetSchema only
+accepts the matching scope of an already managed transaction and never switches
+schema. TxManager delegates to WithinTransaction, but its raw *gorm.DB callback
+cannot enforce scope if a caller replaces context; migrate to the wrapper API.
+
+Integration tests use only `SKYRIX_TEST_POSTGRES_DSN`, which must identify a
+**dedicated test database** with CREATE/DROP SCHEMA permission. Without it they
+skip; recording-driver tests do not establish real PostgreSQL pool isolation.
+
 
 ### hosts
 
@@ -319,3 +373,10 @@ graph as test inputs, so run these tests with `-count=1`.
 | Contents | kernel, engine, hosts, extensions, generators | `cmd/*` binaries and Wire graphs, `providers`, `internal/config`, domains, handlers, router, migrations, Compose, Dockerfiles |
 | Changes | versioned (v0.3 is not compatible with v0.2.x, see CHANGELOG.md) | owned by the service after copying |
 | Example code | — | `internal/domain/example`, `internal/commands/HelloCommand.go`, `internal/jobs/systemPingJob.go` |
+
+The `make uow <domain-path>/<name>` generator uses the shared embedded renderer,
+project `stubs/skyrix/uow.stub` override and atomic AST registration. It creates a
+concrete UOW, constructor and Execute(ctx) transaction skeleton in the domain's
+unitOfWork package. The domain owns participants, business parameters/interfaces
+and service composition; no repository registry, kernel UoW contract or binary
+Wire graph changes are generated. `make stubs` exports the new template too.

@@ -92,8 +92,7 @@ func (p *Plugin) before(db *gorm.DB) {
 	db.Statement.TableExpr = &clause.Expr{SQL: full}
 }
 
-// quotePluginIdent quotes an identifier as is, without the normalisation
-// that SetSchema applies.
+// quotePluginIdent preserves literal identifier names, just like SET LOCAL.
 func quotePluginIdent(s string) string {
-	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+	return quoteIdent(s)
 }

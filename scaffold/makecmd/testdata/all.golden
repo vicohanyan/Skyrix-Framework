@@ -161,6 +161,8 @@ package interfaces
 // Package orderflow contains the OrderFlow domain.
 package orderflow
 
+import unitofwork "code.example.dev/finance/ledger/v2/internal/domain/sales/orderflow/unitOfWork"
+
 import services "code.example.dev/finance/ledger/v2/internal/domain/sales/orderflow/services"
 
 import repository "code.example.dev/finance/ledger/v2/internal/domain/sales/orderflow/repository"
@@ -171,6 +173,7 @@ import "github.com/goforj/wire"
 var ProviderSet = wire.NewSet(
 	repository.NewLineItemRepository,
 	services.NewReconcileBatchService,
+	unitofwork.NewCreateOrderUOW,
 )
 
 -- internal/domain/sales/orderflow/repository/doc.go --
@@ -198,6 +201,31 @@ package services
 type ReconcileBatchService struct{}
 
 func NewReconcileBatchService() *ReconcileBatchService { return &ReconcileBatchService{} }
+
+-- internal/domain/sales/orderflow/unitOfWork/createOrderUOW.go --
+package unitofwork
+
+import (
+	"context"
+
+	"gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
+)
+
+// CreateOrderUOW coordinates one domain operation.
+// Add explicit repository dependencies and a domain operation interface as needed.
+type CreateOrderUOW struct{ db *gormdb.Database }
+
+func NewCreateOrderUOW(db *gormdb.Database) *CreateOrderUOW {
+	return &CreateOrderUOW{db: db}
+}
+
+// Execute is a compilable starting point; define business parameters explicitly.
+func (u *CreateOrderUOW) Execute(ctx context.Context) error {
+	return u.db.WithinTransaction(ctx, func(tx *gormdb.Database) error {
+		// Bind participating repositories explicitly with repo.WithTx(tx).
+		return nil
+	})
+}
 
 -- internal/domain/sales/orderflow/unitOfWork/doc.go --
 // Package unitofwork contains OrderFlow domain components.

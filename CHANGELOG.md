@@ -14,6 +14,22 @@ compatibility layer for v0.2.x applications: services and modules built for
 v0.2.x must be migrated before upgrading. Modules released for v0.3.0 do not
 support v0.2.x.
 
+### Scoped transactions and domain UoW scaffolding
+
+- Add gormdb.Database.WithinTransaction(ctx, func(*Database) error): checked
+  SET LOCAL before callback, GORM commit/rollback/panic and same-transaction
+  savepoints for nested calls on tx; no automatic retries.
+- Remove pooled session-level SET from WithContext. Preserve literal schema names,
+  reject incompatible transaction scope and return schema setup errors. Raw/join
+  SQL requires explicit qualification or WithinTransaction. SetSchema is restricted
+  to managed matching scope; deprecated TxManager delegates with documented raw
+  context limitations. Migrate example UoW and retain explicit repository WithTx.
+- Add make uow with an embedded/project-overridable stub, constructor registration
+  in the domain ProviderSet, conflict/path safety and existing atomic rollback.
+  Repositories, business interfaces/services and binary Wire graphs remain explicit.
+- Add driver-level lifecycle tests, opt-in dedicated PostgreSQL pool/schema tests,
+  UoW golden/override/conflict tests and explicit repeatable Wire/build validation.
+
 ### Local Auth extraction
 
 - Move `extensions/auth` and its tests to the local `gitlab.com/skyrix-lib/auth`

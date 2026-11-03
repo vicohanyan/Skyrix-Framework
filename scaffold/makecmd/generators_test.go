@@ -24,6 +24,7 @@ var allActions = [][]string{
 	{"entity", "sales/order_flow/line_item"},
 	{"repository", "sales/order_flow/line_item"},
 	{"service", "sales/order_flow/reconcile_batch"},
+	{"uow", "sales/order_flow/CreateOrder"},
 	{"handler", "sales/order_flow/invoice_view"},
 	{"command", "reconcile_accounts"},
 	{"command", "scan_invoices", "--db"},
@@ -207,6 +208,7 @@ func TestAllGeneratorsGolden(t *testing.T) {
 func TestUnsupportedRegistrationIsAtomic(t *testing.T) {
 	for _, test := range []struct{ kind, raw, file, bad string }{
 		{"domain", "billing", "providers/domains.go", "package providers\nvar DomainProviderSet = custom()\n"},
+		{"uow", "sales/create", "internal/domain/sales/provider.go", "package sales\nvar ProviderSet = custom()\n"},
 		{"service", "sales/reconcile", "internal/domain/sales/provider.go", "package sales\nvar ProviderSet = custom()\n"},
 		{"entity", "sales/invoice", "internal/database/database.go", "package database\nfunc Models() any {if true{return nil};return nil}\n"},
 		{"handler", "sales/view", "providers/handlers.go", "package providers\ntype Handlers = map[string]any\n"},
@@ -352,7 +354,7 @@ func TestMakeHelpNeedsNoProject(t *testing.T) {
 	t.Setenv("JWT_EXPIRE", "invalid")
 	t.Setenv("DB_PORT", "invalid")
 	maker := testMaker(filepath.Join(t.TempDir(), "missing"))
-	for _, args := range [][]string{{"--help"}, {"domain", "--help"}, {"entity", "--help"}, {"repository", "--help"}, {"service", "--help"}, {"handler", "--help"}, {"command", "--db", "--help"}, {"job", "--help"}, {"seeder", "--help"}, {"stubs", "--help"}, {"migration", "--help"}, {"__complete", "make", ""}, {"completion", "bash"}} {
+	for _, args := range [][]string{{"--help"}, {"domain", "--help"}, {"entity", "--help"}, {"repository", "--help"}, {"service", "--help"}, {"uow", "--help"}, {"handler", "--help"}, {"command", "--db", "--help"}, {"job", "--help"}, {"seeder", "--help"}, {"stubs", "--help"}, {"migration", "--help"}, {"__complete", "make", ""}, {"completion", "bash"}} {
 		if args[0] != "--help" && args[0] != "completion" && args[0] != "__complete" {
 			args = append([]string{"make"}, args...)
 		}

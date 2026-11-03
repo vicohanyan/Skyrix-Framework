@@ -1,0 +1,23 @@
+package unitofwork
+
+import (
+ "context"
+
+ "gitlab.com/skyrix-lib/framework/engine/postgres/gormdb"
+)
+
+// {{.Type}}UOW coordinates one domain operation.
+// Add explicit repository dependencies and a domain operation interface as needed.
+type {{.Type}}UOW struct { db *gormdb.Database }
+
+func New{{.Type}}UOW(db *gormdb.Database) *{{.Type}}UOW {
+ return &{{.Type}}UOW{db: db}
+}
+
+// Execute is a compilable starting point; define business parameters explicitly.
+func (u *{{.Type}}UOW) Execute(ctx context.Context) error {
+ return u.db.WithinTransaction(ctx, func(tx *gormdb.Database) error {
+  // Bind participating repositories explicitly with repo.WithTx(tx).
+  return nil
+ })
+}

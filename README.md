@@ -332,12 +332,15 @@ file/type conflict rather than overwrite each other.
 | domain | `provider.go` and package docs under dto/entity/interfaces/repository/services/unitOfWork; adds its ProviderSet to `providers/domains.go`'s DomainProviderSet and ConsoleDomainProviderSet |
 | entity | Model and constructor in the domain's entity package; adds a model literal to `internal/database.Models` |
 | repository/service | Concrete skeleton and constructor in the domain's repository/services package; adds constructor to its ProviderSet |
+| uow | `make uow order/CreateOrder` creates `unitOfWork/createOrderUOW.go`, `CreateOrderUOW`, constructor and Execute(ctx) with WithinTransaction; registers only the domain constructor |
 | handler | BaseHandler-based HTTP skeleton in `internal/handlers`; adds constructor and Handlers field in `providers/handlers.go`; no route is added |
 | command | console.Command factory in `internal/commands`; registers in `commands.All`, receiving the existing lazy application graph |
 | command --db | Registers in `commands.DatabaseAll`, receiving the existing lazy database graph; help/completion never build it |
 | job | Job implementation in `internal/jobs`; constructor in both JobProviderSet and ConsoleJobProviderSet, field in Jobs, and registration in ProvideRegisteredJobsRegistry |
 | seeder | Idempotent no-op Seeder in `internal/database/seeders`; constructor in database.ProviderSet and parameter/entry in Seeders |
 | migration | Versioned SQL file; preserves --notx and installed Atlas hashing behavior |
+
+UoW skeletons leave repositories, operation parameters, domain interfaces and service wiring explicit. `make stubs` includes `uow.stub`, overridable at `stubs/skyrix/uow.stub`.
 
 Domain skeletons contain no invented business operations, HTTP/DB dependencies
 or UnitOfWork contract. Repositories/services start as concrete types: introduce
@@ -417,3 +420,59 @@ not published releases. Relative `replace` directives support this local layout;
 fixture modules rewrite those paths to absolute paths. `GOWORK=off` with local
 replacements is not evidence of a standalone build from published dependencies.
 No Auth repository or release has been published by this extraction.
+
+### Scoped GORM transactions
+
+`Database.WithContext(ctx)` binds context and metadata for the registered schema
+plugin; it executes no SQL and does not change a pooled connection's search_path.
+The plugin qualifies the primary CRUD table (main models use the main schema;
+scoped models use `scope.SchemaFrom(ctx)`, falling back to main). It does not
+rewrite joins, Raw/Row/Scan, explicit table expressions or arbitrary SQL.
+
+Use a domain UoW and `WithinTransaction` for unqualified SQL and multi-repository
+operations:
+
+```go
+err := database.WithinTransaction(ctx, func(tx *gormdb.Database) error {
+    // Both repository copies must use this tx; preserve logger/other dependencies.
+    orders := orderRepo.WithTx(tx)
+    history := historyRepo.WithTx(tx)
+    if err := orders.Save(ctx, order); err != nil { return err }
+    return history.Append(ctx, entry)
+})
+```
+
+Before the callback, GORM begins a transaction with ctx and gormdb checks
+`SET LOCAL search_path`. The wrapper retains the same SQL transaction, main
+schema and selected scope. WithContext on that wrapper accepts the same effective
+schema, including derived contexts with new deadlines; incompatible scope returns
+`ErrScopeMismatch` in the GORM session's Error. The original transaction context
+still controls the maximum lifetime. An empty main schema means `public`.
+Schema names are literal identifiers: case and whitespace are preserved, embedded
+quotes escaped, and NUL rejected. No silent lowercasing is performed.
+
+Callback nil commits; an error or panic rolls back through GORM, with panic
+propagated. Begin/SET LOCAL/commit errors are returned; errors retain wrapping for
+errors.Is/As. Rollback errors follow GORM's behavior and do not replace the
+callback error. No automatic retries: a failed commit can have an unknown result.
+
+Nested calls **on tx** use GORM savepoints in the same SQL transaction. Inner
+success is provisional until outer commit; inner failure rolls back to its
+savepoint. Scope changes and unmanaged raw GORM transactions are rejected, as is
+nesting with DisableNestedTransaction enabled. Calling the original root database
+starts independent work; context does not propagate a transaction automatically.
+Do not share a tx concurrently, commit it manually, or retain it after callback.
+
+Migration: replace `db.WithContext(ctx).Transaction(...)` with
+`db.WithinTransaction(ctx, func(tx *gormdb.Database) error { ... })`; adapt explicit
+repository WithTx methods to keep this wrapper and copy other dependencies.
+Ordinary WithContext no longer guarantees search_path for arbitrary SQL. Use
+WithinTransaction or explicitly qualify every relevant SQL identifier. Do not
+replace SET with SET LOCAL outside a transaction. Deprecated SetSchema only
+accepts the matching scope of an already managed transaction and never switches
+schema. TxManager delegates to WithinTransaction, but its raw *gorm.DB callback
+cannot enforce scope if a caller replaces context; migrate to the wrapper API.
+
+Integration tests use only `SKYRIX_TEST_POSTGRES_DSN`, which must identify a
+**dedicated test database** with CREATE/DROP SCHEMA permission. Without it they
+skip; recording-driver tests do not establish real PostgreSQL pool isolation.

@@ -1,0 +1,11 @@
+// Package sales contains the Sales domain.
+package sales
+
+import unitofwork "code.example.dev/finance/ledger/v2/internal/domain/sales/unitOfWork"
+
+import "github.com/goforj/wire"
+
+// ProviderSet contains this domain's constructors and interface bindings.
+var ProviderSet = wire.NewSet(
+	unitofwork.NewCreateOrderUOW,
+)

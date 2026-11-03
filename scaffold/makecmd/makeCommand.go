@@ -41,7 +41,7 @@ func NewMakeCommand() *MakeCommand {
 // (console.NeedsNothing): they only write files in the project.
 func (c *MakeCommand) Command() *console.Command {
 	group := &console.Command{Use: "make", Short: "Create project scaffolding"}
-	for _, kind := range []string{"domain", "entity", "repository", "service", "handler", "command", "job", "seeder", "stubs"} {
+	for _, kind := range []string{"domain", "entity", "repository", "service", "uow", "handler", "command", "job", "seeder", "stubs"} {
 		kind := kind
 		args := cobra.ExactArgs(1)
 		use := kind + " <name>"

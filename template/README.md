@@ -350,6 +350,7 @@ cobra make domain sales/order_flow
 cobra make entity sales/order_flow/line_item
 cobra make repository sales/order_flow/line_item
 cobra make service sales/order_flow/reconcile_batch
+cobra make uow sales/order_flow/CreateOrder
 cobra make handler sales/order_flow/invoice_view
 cobra make command reconcile_accounts
 cobra make command scan_invoices --db
@@ -431,3 +432,17 @@ Write failures roll back only the operation's files, restoring previous contents
 and modes and removing only newly created empty directories. External edits
 detected while publishing/rolling back are preserved and reported. Failed Atlas
 hashing also restores the previous atlas.sum and removes the new migration.
+
+### Domain transactions
+
+Example CreateTaskUOW uses gormdb.WithinTransaction and explicit repository
+WithTx(*gormdb.Database). Services keep their business-only UoW interfaces.
+`make uow order/CreateOrder` creates a domain constructor and Execute(ctx)
+skeleton using the same mechanism; add repositories and business contracts
+explicitly. The stub is exported/overridden as stubs/skyrix/uow.stub.
+
+WithContext qualifies primary CRUD tables through the plugin; it does not set
+search_path on pooled connections. Run unqualified Raw/Row/Scan and joins inside
+WithinTransaction (checked SET LOCAL), or explicitly qualify SQL. Nested calls on
+tx use savepoints, scope changes fail, and transaction contexts must be preserved.
+See the Framework README for migration and raw TxManager limitations.
