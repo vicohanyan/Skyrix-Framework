@@ -16,6 +16,7 @@ func TestConfigEnvWithoutSettings(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "invalid-log-level")
 	t.Setenv("APP_PORT", "invalid-live-port")
 	t.Setenv("DB_PASS", "live-secret")
+	t.Setenv("DB_SSLMODE", "live-sslmode")
 	g := newCountingGraphs()
 	defer g.Close()
 	output, err := execute(t, newConsole(g.graphs), "config:env")
@@ -27,7 +28,16 @@ func TestConfigEnvWithoutSettings(t *testing.T) {
 			t.Errorf("missing %s:\n%s", key, output)
 		}
 	}
-	for _, value := range []string{"missing-environment", "invalid-log-level", "invalid-live-port", "live-secret"} {
+	sslMode := false
+	for line := range strings.SplitSeq(output, "\n") {
+		if fields := strings.Fields(line); len(fields) == 4 && fields[1] == "DB_SSLMODE" {
+			sslMode = fields[0] == "database" && fields[2] == "string" && fields[3] == `"disable"`
+		}
+	}
+	if !sslMode {
+		t.Errorf("DB_SSLMODE with default disable missing:\n%s", output)
+	}
+	for _, value := range []string{"missing-environment", "invalid-log-level", "invalid-live-port", "live-secret", "live-sslmode"} {
 		if strings.Contains(output, value) {
 			t.Fatalf("current value leaked: %s", value)
 		}

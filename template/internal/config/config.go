@@ -54,6 +54,12 @@ type Database struct {
 	Pass       string `yaml:"DB_PASS" env:"DB_PASS" secret:"true"`
 	Name       string `yaml:"DB_NAME" env:"DB_NAME"`
 	MainSchema string `yaml:"DB_MAIN_SCHEMA" env:"DB_MAIN_SCHEMA"`
+	// SSLMode is the libpq sslmode. "disable" (the default, also used when
+	// empty) turns PostgreSQL TLS off, which suits a database on the same
+	// host or behind a VPN. allow, prefer, require, verify-ca and
+	// verify-full enable TLS; certificates come from the standard libpq
+	// PGSSLROOTCERT, PGSSLCERT and PGSSLKEY environment variables.
+	SSLMode string `yaml:"DB_SSLMODE" env:"DB_SSLMODE" env-default:"disable"`
 }
 
 // Redis is the Redis connection. KeyPrefix is required (no default): it is the

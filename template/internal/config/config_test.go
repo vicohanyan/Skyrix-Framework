@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -99,5 +100,65 @@ func TestMigrationDevURLFromYAMLAndEnv(t *testing.T) {
 	}
 	if cfg.Migrations.DevURL != "docker://postgres/18/env" {
 		t.Fatal(cfg.Migrations.DevURL)
+	}
+}
+
+// unsetEnv removes key for the test and restores it afterwards.
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	t.Setenv(key, "")
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDatabaseSSLModeFromYAMLAndEnv(t *testing.T) {
+	unsetEnv(t, "DB_SSLMODE")
+	load := func(yaml string) string {
+		t.Helper()
+		cfg := &Config{source: []byte(yaml)}
+		if err := cfg.LoadSection("database", []string{"DATABASE"}, &cfg.Database); err != nil {
+			t.Fatal(err)
+		}
+		return cfg.Database.SSLMode
+	}
+	if got := load("DATABASE:\n  DB_HOST: db\n"); got != "disable" {
+		t.Fatalf("default DB_SSLMODE = %q, want disable", got)
+	}
+	if got := load(""); got != "disable" {
+		t.Fatalf("DB_SSLMODE without YAML = %q, want disable", got)
+	}
+	if got := load("DATABASE:\n  DB_SSLMODE: verify-full\n"); got != "verify-full" {
+		t.Fatalf("YAML DB_SSLMODE = %q", got)
+	}
+	// An explicit empty value is kept; the engine treats it as disable.
+	if got := load("DATABASE:\n  DB_SSLMODE: \"\"\n"); got != "" {
+		t.Fatalf("empty YAML DB_SSLMODE = %q, want empty", got)
+	}
+
+	t.Setenv("DB_SSLMODE", "require")
+	if got := load("DATABASE:\n  DB_SSLMODE: verify-full\n"); got != "require" {
+		t.Fatalf("env did not override YAML: %q", got)
+	}
+	t.Setenv("DB_SSLMODE", "")
+	if got := load("DATABASE:\n  DB_SSLMODE: verify-full\n"); got != "" {
+		t.Fatalf("empty env DB_SSLMODE = %q, want empty", got)
+	}
+}
+
+func TestDatabaseSSLModeInExampleConfigs(t *testing.T) {
+	unsetEnv(t, "DB_SSLMODE")
+	for _, file := range []string{"../../config/local.yaml", "../../config/prod.yaml"} {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := &Config{source: data}
+		if err := cfg.LoadSection("database", []string{"DATABASE"}, &cfg.Database); err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Database.SSLMode != "disable" {
+			t.Fatalf("%s: DB_SSLMODE = %q, want disable", file, cfg.Database.SSLMode)
+		}
 	}
 }

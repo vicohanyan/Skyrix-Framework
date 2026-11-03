@@ -46,7 +46,7 @@ func ProvideDatabaseConfig(cfg *config.Config) (*config.Database, error) {
 func ProvidePostgresOptions(cfg *config.Database) enginepostgres.Config {
 	return enginepostgres.Config{
 		Host: cfg.Host, Port: cfg.Port, User: cfg.User, Password: cfg.Pass,
-		Database: cfg.Name, MainSchema: cfg.MainSchema,
+		Database: cfg.Name, MainSchema: cfg.MainSchema, SSLMode: cfg.SSLMode,
 	}
 }
 

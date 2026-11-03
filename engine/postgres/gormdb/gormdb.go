@@ -21,19 +21,20 @@ import (
 // Open validates the configuration and opens a GORM connection pool. It does
 // not contact the server: the Component pings it on Start. The caller closes
 // the pool.
+//
+// The pool is opened by postgres.OpenPool and handed to GORM as an existing
+// connection, so GORM never parses the connection string and neither its
+// errors nor its logger can contain the password.
 func Open(cfg postgres.Config) (*gorm.DB, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-	db, err := gorm.Open(gormpostgres.Open(cfg.DSN()), &gorm.Config{DisableAutomaticPing: true})
+	sqlDB, err := postgres.OpenPool(cfg)
 	if err != nil {
 		return nil, err
 	}
-	sqlDB, err := db.DB()
+	db, err := gorm.Open(gormpostgres.New(gormpostgres.Config{Conn: sqlDB}), &gorm.Config{DisableAutomaticPing: true})
 	if err != nil {
+		_ = sqlDB.Close()
 		return nil, err
 	}
-	cfg.ConfigurePool(sqlDB)
 	return db, nil
 }
 

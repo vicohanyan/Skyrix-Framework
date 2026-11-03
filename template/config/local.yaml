@@ -21,6 +21,9 @@ DATABASE:
   DB_PASS: secret
   DB_NAME: app
   DB_MAIN_SCHEMA: public
+  # PostgreSQL TLS: disable (default) turns TLS off; allow, prefer, require,
+  # verify-ca or verify-full enable it explicitly.
+  DB_SSLMODE: disable
 
 REDIS:
   REDIS_HOST: redis

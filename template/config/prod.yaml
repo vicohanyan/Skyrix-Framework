@@ -21,6 +21,11 @@ DATABASE:
   DB_PASS: change_me
   DB_NAME: app
   DB_MAIN_SCHEMA: public
+  # PostgreSQL TLS: disable (default) turns TLS off, e.g. for a database on the
+  # same host or reached over a VPN. Set require, verify-ca or verify-full
+  # explicitly to enable TLS (allow and prefer also exist); for verify-* point
+  # PGSSLROOTCERT at the CA certificate.
+  DB_SSLMODE: disable
 
 REDIS:
   REDIS_HOST: redis

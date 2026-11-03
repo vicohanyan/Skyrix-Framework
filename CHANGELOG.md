@@ -14,6 +14,25 @@ compatibility layer for v0.2.x applications: services and modules built for
 v0.2.x must be migrated before upgrading. Modules released for v0.3.0 do not
 support v0.2.x.
 
+### PostgreSQL sslmode and safe connection errors
+
+- Template: add `DB_SSLMODE` to the `DATABASE` section (YAML and environment,
+  default `disable`; an empty value also means `disable`). `disable` turns
+  PostgreSQL TLS off; `allow`, `prefer`, `require`, `verify-ca` and
+  `verify-full` are chosen explicitly. The HTTP binary, `db automigrate`/`db seed`
+  and the `db migrate*` commands receive the same value. TLS is not enforced for
+  production; certificates use the standard libpq `PGSSL*` variables.
+- `postgres.Config.Validate` requires a port in 1-65535 (port 0 used to reach
+  pgx) and an sslmode of disable, allow, prefer, require, verify-ca or
+  verify-full; its messages contain no connection values.
+- Fix a partial password leak: pgx's best-effort masking of unparsable
+  connection strings missed passwords with quotes followed by spaces. Add
+  `postgres.Config.ConnConfig` and `postgres.OpenPool`; `OpenSQL` and
+  `gormdb.Open` parse the connection string once and return
+  `*postgres.ParseError` (pgx's reason only, no connection string, no wrapped
+  pgx error). GORM now receives an opened pool and never parses the connection
+  string, so neither its errors nor its logger can contain it.
+
 ### Migration diff configuration
 
 - Generate a private temporary Atlas configuration for db migrate:diff, with

@@ -142,10 +142,20 @@ in `internal/config/config.go`.
 | root           | `APP_ENV`, `SERVICE_NAME`, `APP_VERSION` (recorded with applied migrations)           |
 | `LOGGER`       | `LOG_OUTPUT`, `LOG_TYPE`, `LOG_LEVEL`, `LOG_DIR`, `LOG_FILE`                          |
 | `HTTP_SERVER`  | `APP_ADDRESS`, `APP_PORT` (8080), `APP_REQUEST_TIMEOUT`, `APP_READ_HEADER_TIMEOUT` (10s) |
-| `DATABASE`     | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `DB_MAIN_SCHEMA`               |
+| `DATABASE`     | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `DB_MAIN_SCHEMA`, `DB_SSLMODE` (disable) |
 | `REDIS`        | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASS`, `REDIS_DB`, `REDIS_KEY_PREFIX`              |
 | `JWT`          | `JWT_PUBLIC_KEY_PATH`, `JWT_ALGORITHM`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_ALLOWED_ROLES`, ... |
 | `TENANT_CACHE` | `TENANT_CACHE_TTL`                                                                    |
+
+`DB_SSLMODE` is the PostgreSQL (libpq) sslmode. The default `disable`, also
+used when the value is empty, turns PostgreSQL TLS off; it fits a database on
+the same host or reached over a VPN. TLS is enabled only by choosing another
+mode explicitly: `allow`, `prefer`, `require`, `verify-ca` or `verify-full`.
+For `verify-ca`/`verify-full`, point the standard libpq `PGSSLROOTCERT` (and,
+for client certificates, `PGSSLCERT`/`PGSSLKEY`) environment variables at the
+files. The HTTP binary, `db automigrate`/`db seed` and the `db migrate*`
+commands use the same value. Connection errors never include the password or
+the connection string.
 
 `REDIS_KEY_PREFIX` has no default and is required by every binary that uses
 Redis: it is the root of every key the service writes, so services sharing a
