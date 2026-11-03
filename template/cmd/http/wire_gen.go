@@ -72,7 +72,12 @@ func buildHTTPApp() (*httpApp, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	jwtService := service.NewJWTVerifier(loggerInterface, serviceConfig)
+	jwtService, err := service.NewJWTVerifier(loggerInterface, serviceConfig)
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	options := middleware3.OptionsFromConfig(serviceConfig)
 	authMiddleware := middleware3.NewAuthMiddleware(jwtService, loggerInterface, options)
 	noopTenantMiddleware := router.NewNoopTenantMiddleware()

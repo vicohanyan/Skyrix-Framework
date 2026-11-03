@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"errors"
+	"fmt"
 	"os"
 
 	"gitlab.com/skyrix-lib/framework/extensions/auth/contracts"
@@ -27,11 +28,14 @@ type JWTService struct {
 
 // NewJWTService loads RSA keys and returns a JWT implementation backed by the
 // token blacklist and session store.
-func NewJWTService(logger logger.Interface, cfg *Config, blacklist contracts.TokenBlacklist, sessions contracts.SessionStore) *JWTService {
+func NewJWTService(logger logger.Interface, cfg *Config, blacklist contracts.TokenBlacklist, sessions contracts.SessionStore) (*JWTService, error) {
+	if cfg == nil {
+		return nil, errors.New("JWTService: nil config")
+	}
 	privateKey, publicKey, err := loadKeys(cfg.PrivateKeyPath, cfg.PublicKeyPath)
 	if err != nil {
 		logger.Error("Failed to load JWT keys", "error", err)
-		panic("JWTService critical error: " + err.Error())
+		return nil, fmt.Errorf("JWTService: load keys: %w", err)
 	}
 	return &JWTService{
 		PrivateKey: privateKey,
@@ -40,7 +44,7 @@ func NewJWTService(logger logger.Interface, cfg *Config, blacklist contracts.Tok
 		Logger:     logger,
 		Blacklist:  blacklist,
 		Sessions:   sessions,
-	}
+	}, nil
 }
 
 // GenerateToken creates a signed JWT using configured RSA algorithm and custom claims.

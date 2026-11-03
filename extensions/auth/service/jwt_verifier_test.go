@@ -162,12 +162,15 @@ func newTestJWTVerifierWithAudience(t *testing.T, issuer string, audience string
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	verifier := NewJWTVerifier(noopJWTLogger{}, &Config{
+	verifier, err := NewJWTVerifier(noopJWTLogger{}, &Config{
 		PublicKeyPath: publicKeyPath,
 		Algorithm:     "RS256",
 		Issuer:        issuer,
 		Audience:      audience,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	return privateKey, verifier
 }
 

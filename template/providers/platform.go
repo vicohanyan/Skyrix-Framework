@@ -10,17 +10,15 @@ import (
 // Several driver sets can live in this package. Select the required sets in
 // each binary's wire.Build and request their typed modules in its provider below.
 //
-// To connect a platform driver, for example EventBus (NATS):
-//  1. go get gitlab.com/skyrix-lib/eventbus@<version>
-//  2. configure the driver as its documentation describes (see also
-//     "Platform modules" in the framework ARCHITECTURE.md; the driver
-//     configuration mechanism is being revised);
-//  3. uncomment the driver's directive below; select EventbusplatformSet in the
-//     chosen Wire graphs and add *eventbus.Module to their platform providers;
-//     select console commands separately in ProvideConsolePlatformCommands;
-//  4. go generate ./providers && go tool wire gen ./cmd/http ./cmd/cobra ./cmd/worker
+// To connect a driver, first add its dependency explicitly, then run:
+//   go run ./cmd/cobra platform add <driver-package>
+// Select the generated set in each required Wire graph, add the typed module
+// to its application provider, and select console commands separately.
+// Regenerate Wire explicitly with the installed tool.
+// EventBus needs the manifest, typed Config/NewConfig and console.Command
+// contract described in the framework ARCHITECTURE.md before it can be added.
 //
-// //skyrix:platform gitlab.com/skyrix-lib/eventbus/platform config=EventBus
+// //skyrix:platform gitlab.com/skyrix-lib/eventbus/platform
 
 // ProvideHTTPPlatform lists HTTP modules in lifecycle order. Driver config and
 // components are built only when requested by this graph.

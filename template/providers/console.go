@@ -5,7 +5,7 @@ import (
 	"gitlab.com/skyrix-lib/template/internal/database"
 
 	"github.com/goforj/wire"
-	"github.com/spf13/cobra"
+	"gitlab.com/skyrix-lib/framework/cobra/console"
 )
 
 // DatabaseCommandSet provides the dependencies of db automigrate and db seed
@@ -20,6 +20,6 @@ var DatabaseCommandSet = wire.NewSet(
 // Add frameworkcobra.ModuleCommands(new(driver.Module)) for selected drivers.
 // Factories must work on zero values without loading config, building a graph
 // or starting background components merely to register commands or show help.
-func ProvideConsolePlatformCommands() []*cobra.Command {
+func ProvideConsolePlatformCommands() []*console.Command {
 	return nil
 }

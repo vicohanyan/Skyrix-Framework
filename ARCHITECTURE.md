@@ -134,16 +134,21 @@ application declares its modules in `providers/platform.go`, for example:
 
 ```go
 //go:generate go run gitlab.com/skyrix-lib/framework/cmd/platformgen
-//skyrix:platform gitlab.com/skyrix-lib/eventbus/platform config=EventBus
+//skyrix:platform gitlab.com/skyrix-lib/eventbus/platform
 ```
 
 `go generate` runs `cmd/platformgen`, which writes `providers/platform_gen.go`
 with an independent Wire set for every directive, for example
 `EventbusplatformSet`. Set names capitalize the existing import alias and append
-`Set`. Each set includes only that driver's `ProviderSet` and its existing
-`config=Field` adapter (`wire.FieldsOf` and `wire.Bind`). Without directives the
-file contains no imports or sets. The generator does not create a shared
-`PlatformSet`, `ProvidePlatform` or `PlatformCommands`.
+`Set`. Each set includes only that driver's `ProviderSet` and a typed config
+provider. The driver exports a struct `Config` and `NewConfig() *Config` returning
+fresh defaults without I/O. The generated provider calls Template's
+`Config.LoadSections(config.Section{Key: manifest.ConfigKey, Value: value})`.
+There are no interface bindings to fields on the application's Config. Unselected
+sets load no settings and construct no modules or components. Without declarations,
+only an empty `PlatformSections()` metadata function is generated. It supplies
+fresh section defaults for config:env and never loads settings or calls Validate.
+No shared `PlatformSet`, platform constructor or command list is generated.
 
 The application owns `ProvideHTTPPlatform` and `ProvideWorkerPlatform` in
 `providers/platform.go`. Each binary's `wire.Build` explicitly selects its driver
@@ -156,7 +161,11 @@ Console selects commands separately in the application-owned
 `providers.ProvideConsolePlatformCommands`, for example with
 `frameworkcobra.ModuleCommands(new(selecteddriver.Module))`. Factories must work
 on zero-value modules without loading settings, building a graph or starting
-components just to list commands or show help.
+components just to list commands or show help. `CommandFactory` returns
+`*console.Command`, registered with `Console.Add`. A command that needs DI uses
+`console.With` with its explicitly selected lazy graph; the application closes it.
+Completion and help use descriptions only. Constructors, config loading and
+connections belong to execution, including cleanup when a constructor fails.
 
 Several independent sets remain in the same providers package; domains retain
 their own `ProviderSet`. Importing a shared package may put all its driver imports
@@ -165,12 +174,44 @@ graph. Adding a driver directive does not load its configuration, construct its
 module, start its components or register its commands by itself. No binary
 registry, runtime filtering or startup discovery is involved.
 
-Connecting a driver: add its module (`go get`), configure it according to its
-documentation, declare the optional config adapter, select its set in the chosen
-Wire graphs, update their application-owned platform providers, then regenerate
-platform adapters and Wire. `config=Field` is unchanged; revising driver
-configuration and migrating driver commands to `console.Command` remain future
-work. No manifest integration is part of this change.
+The driver package ships `manifest.yaml` with exactly `name`, `config_key`, and
+`config_example` (a YAML string containing a section-body mapping). Tooling rejects
+unknown fields, invalid names/section keys, duplicate declarations/names,
+overlapping keys and colliding env prefixes. It reads manifests from explicitly
+declared packages using Go package metadata; no package initialization or discovery
+runs. Manifest data controls tooling only. Versions live in go.mod.
+
+`scaffold/platform` parses declarations, validates package contracts and manifests,
+and renders independent sets. `cobra/platformcmd.Command()` exposes standalone
+`platform add <import-path>`, `remove <import-path>`, and `list`, with `--dir`
+(default `providers`). List prints name, config key and import path. Add/remove
+plan and validate all output before writing, stage both files, and restore the
+original declaration on a failed second rename. Repeated adds/missing removes are
+no-ops. They preserve user code, config and domains; they only edit declaration
+lines and the generated adapters. They never modify graph or entrypoint files,
+run go get/tidy, or install tools. Add requires the package dependency to be
+available; missing-dependency errors tell users to add it explicitly.
+
+Connecting a driver: explicitly add its dependency, run platform add (or write a
+declaration and run platformgen), configure the manifest's dotted section key,
+select its set in the chosen Wire graphs and typed modules in application
+providers, select command descriptions separately, then regenerate Wire with an
+installed tool. Remove only removes declarations/adapters: first edit any graphs
+that reference the set before regenerating Wire. The application retains the
+structure Wire graph → application providers → domain/infrastructure ProviderSets.
+
+External EventBus must migrate before using this adapter: ship manifest.yaml;
+replace the config interface with a concrete driver-owned Config and pure
+NewConfig defaults; accept the typed config in ProviderSet without a second
+YAML/env load; keep validation in Config.Validate and mark secrets; return
+console.Command descriptions with deferred DI/cleanup. Check any EventBus callers
+of JWT constructors for the new error result. Its sources are unavailable here,
+so no external changes or live NATS checks were made. Two local test drivers
+exercise the contract through generated independent Wire graphs instead.
+
+`NewJWTVerifier` and `NewJWTService` return `(*JWTService, error)` for key-loading
+failures (with wrapped causes). Wire cleans up already acquired resources on
+these errors; signing algorithms, claims and verification behavior are unchanged.
 
 ## Binaries and Wire graphs (template)
 

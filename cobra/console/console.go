@@ -41,8 +41,8 @@ func (c *Console) Add(commands ...*Command) *Console {
 	return c
 }
 
-// AddCobra registers commands that are already Cobra commands, such as the
-// commands of platform modules (cobra.ModuleCommands). They are standalone:
+// AddCobra registers application commands that are already Cobra commands.
+// They are standalone:
 // the console builds no graph for them. A Cobra command can belong to one
 // root only, so build them for each console. nil commands are skipped.
 func (c *Console) AddCobra(commands ...*cobra.Command) *Console {

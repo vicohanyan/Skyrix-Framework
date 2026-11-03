@@ -6,6 +6,7 @@ package corecmd
 import (
 	"gitlab.com/skyrix-lib/framework/cobra/configcmd"
 	"gitlab.com/skyrix-lib/framework/cobra/console"
+	"gitlab.com/skyrix-lib/framework/cobra/platformcmd"
 	"gitlab.com/skyrix-lib/framework/config"
 	"gitlab.com/skyrix-lib/framework/database/dbcmd"
 	"gitlab.com/skyrix-lib/framework/database/migrate/migratecmd"
@@ -45,5 +46,6 @@ func Commands(options Options) []*console.Command {
 		jobscmd.Command(options.Jobs),
 		make.Command(),
 		configcmd.Env(options.ConfigSections...),
+		platformcmd.Command(),
 	}
 }

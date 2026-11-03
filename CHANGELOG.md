@@ -22,6 +22,26 @@ support v0.2.x.
 - `gitlab.com/skyrix-lib/eventbus` v1.1.0 or newer. EventBus v1.0.x is built on
   `google/wire`, ships no platform module, and does not work with this release.
 
+### Driver contract and tooling changes
+
+- JWT constructors return `(*JWTService, error)` instead of panicking on RSA key
+  loading errors; regenerated Template Wire preserves reverse cleanup on failure.
+  Token signing and verification behavior is unchanged.
+- Minimal tooling-only driver manifest: `name`, `config_key`, `config_example`.
+  No runtime metadata, version field, global registry or startup discovery.
+- Driver command factories return `*console.Command`; explicit lazy graphs defer
+  configuration/connections until execution. Help/completion build no graphs.
+- platformgen replaces `config=Field` with independent typed Config/NewConfig
+  adapters using Template's shared config.Section loader and manifest keys.
+  Unselected drivers do not load settings or construct/start components.
+- Standalone platform add/remove/list manage declarations and independent
+  generated sets; repeated operations are no-ops, invalid input preserves files.
+  Graphs, command choices and user config/domains remain application-owned.
+  Dependencies and external tools must be managed explicitly by the user.
+- Contract tests cover two real Wire graphs, JWT errors/cleanup, lazy commands,
+  selected sections, file preservation and repeatable generation. External
+  EventBus migration and live integration checks require its own source/module.
+
 ### Added
 
 - Explicit foundation boundaries for `kernel/...`, `config` and `logger`:
@@ -195,7 +215,7 @@ support v0.2.x.
   uses `httpserver.DefaultReadHeaderTimeout` (10s). The template sets
   `APP_READ_HEADER_TIMEOUT`.
 - `cmd/platformgen` emits independent per-driver Wire sets, preserving
-  `config=Field`. It no longer generates an aggregate `PlatformSet`,
+  typed config.Section adapters. It no longer generates an aggregate `PlatformSet`,
   `ProvidePlatform` or `PlatformCommands`; no directives produces an empty
   declaration file. Template explicitly selects modules per Wire graph and
   console commands through application providers. Existing providers/domain

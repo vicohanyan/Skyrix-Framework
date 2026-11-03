@@ -229,17 +229,15 @@ Env collisions are checked across the explicit composition, including overrides.
 load HTTP/Postgres/Auth/Redis/Tenant only when used by the binary; migration
 settings explicitly select Postgres. Adding a section requires an explicit typed
 provider that loads and returns its consumer-owned configuration; this needs no
-network provider. ConfigSet alone does not enable infrastructure. The existing
-`config=Field` platformgen adapter is unchanged; driver sections must
-be selected explicitly by their composition/provider until platformgen migration.
-No global registry, config:env command, driver manifest or platform management
-command is introduced.
+network provider. ConfigSet alone does not enable infrastructure. Driver adapters
+use the same `config.Section` loader; the former `config=Field` option is removed.
+`config:env` describes fresh defaults without reading YAML/env or calling Validate.
 
 
 ## Explicit platform composition
 
 `cmd/platformgen` generates independent driver sets in the application's
-`providers/platform_gen.go`, retaining `config=Field` bindings. It generates no
+`providers/platform_gen.go`, loading typed driver config via `config.Section`. It generates no
 shared platform constructor or all-driver command list. Select individual sets
 in each binary's `wire.Build`, and pass only the selected typed modules to an
 application-owned platform provider. Console command selection is explicit and
@@ -251,3 +249,45 @@ and `ProvideConsolePlatformCommands`. Unselected drivers' configuration and
 components are not built merely because their sets are declared. Shared package
 imports can still appear in `go list -deps`; this does not imply construction or
 startup. No binary directives, registries or runtime filters are introduced.
+
+Driver packages export `Module`, `ProviderSet`, `Config` (a struct) and
+`NewConfig() *Config` (fresh defaults only). Their `manifest.yaml` contains exactly:
+
+```yaml
+name: example
+config_key: platform.example
+config_example: |
+  enabled: false
+```
+
+`config_example` is the YAML section body, for tooling/documentation only. The
+manifest is never read at application startup. Generated providers pass the typed
+config and manifest key to Template's `Config.LoadSections`; defaults, YAML, env,
+Validate and secret masking remain in the existing config loader.
+
+```sh
+go run ./cmd/cobra platform list
+go run ./cmd/cobra platform add <driver-package>
+go run ./cmd/cobra platform remove <driver-package>
+```
+
+Run these from Template (or pass `--dir <providers-directory>`). Add/remove update
+only active declarations in `platform.go` and independent sets/config metadata in
+`platform_gen.go`. Repeated adds and missing removals print `No changes.` Invalid
+input is checked before publishing either file. Remove preserves user config,
+domains and Wire sources. Edit Wire sets, module providers and command selection
+explicitly before regenerating Wire; removing a selected set requires that edit
+before the next Wire generation. No go get/tidy or tool installation is run.
+If a driver package is unavailable, add its module dependency explicitly and retry.
+
+Driver `cobra.CommandFactory` now returns `*console.Command`. Metadata factories
+must work on zero-value modules and perform no I/O; bind a lazy injector with
+`console.With(graph, handler)` and close that graph in the console owner. Graphs
+and resources are created only for execution, including cleanup on build errors.
+JWT constructors now return `(*JWTService, error)`; callers must handle errors.
+Token signing and validation rules are unchanged.
+
+External EventBus sources were not modified or integration-tested. Its platform
+package needs the manifest above, a concrete typed Config and fresh NewConfig,
+providers accepting that config without reloading it, and console.Command factories
+with deferred dependency construction/cleanup. See ARCHITECTURE.md for details.

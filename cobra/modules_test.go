@@ -5,7 +5,7 @@ import (
 
 	"gitlab.com/skyrix-lib/framework/kernel"
 
-	spfcobra "github.com/spf13/cobra"
+	"gitlab.com/skyrix-lib/framework/cobra/console"
 )
 
 type componentsOnlyModule struct{ name string }
@@ -23,13 +23,13 @@ func (m commandModule) Commands() []CommandFactory { return m.factories }
 func TestModuleCommandsCollectsProvidersInOrder(t *testing.T) {
 	commands := ModuleCommands(
 		commandModule{componentsOnlyModule{"one"}, []CommandFactory{
-			func() *spfcobra.Command { return &spfcobra.Command{Use: "one"} },
+			func() *console.Command { return &console.Command{Use: "one"} },
 			nil,
-			func() *spfcobra.Command { return nil },
+			func() *console.Command { return nil },
 		}},
 		componentsOnlyModule{"no-commands"},
 		commandModule{componentsOnlyModule{"two"}, []CommandFactory{
-			func() *spfcobra.Command { return &spfcobra.Command{Use: "two"} },
+			func() *console.Command { return &console.Command{Use: "two"} },
 		}},
 	)
 	if len(commands) != 2 || commands[0].Use != "one" || commands[1].Use != "two" {

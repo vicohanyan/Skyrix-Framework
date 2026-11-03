@@ -55,40 +55,38 @@ func TestPlatformDriverSelection(t *testing.T) {
 var AppConfig, Constructed, Components, Started int
 var Selected string
 `)
-	write("internal/config/config.go", `package config
+	configSource, err := os.ReadFile(filepath.Join(template, "internal/config/config.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	write("internal/config/config.go", string(configSource))
+	write("internal/config/probe.go", `package config
 import "example.com/selection/internal/probe"
-type Config struct { First *First; Second *Second }
-type First struct{}
-type Second struct{}
-func (*First) DefaultEnabled() bool { return false }
-func (*Second) DefaultEnabled() bool { return false }
-func New() *Config {probe.AppConfig++;return &Config{First:&First{},Second:&Second{}}}
+func New() (*Config,error) {probe.AppConfig++;return LoadConfig()}
 `)
 	driver := `package platform
 import (
  "context"
  "github.com/goforj/wire"
- "github.com/spf13/cobra"
  "example.com/selection/internal/probe"
  frameworkcobra "gitlab.com/skyrix-lib/framework/cobra"
- "gitlab.com/skyrix-lib/framework/config"
+ "gitlab.com/skyrix-lib/framework/cobra/console"
+ "fmt"
  "gitlab.com/skyrix-lib/framework/kernel"
 )
-type Config interface { DefaultEnabled() bool }
-type options struct { Enabled bool ` + "`yaml:\"enabled\"`" + ` }
+type Config struct { Enabled bool ` + "`yaml:\"enabled\"`" + ` }
+func NewConfig() *Config { return &Config{Enabled:true} }
+func (c *Config) Validate() error {if c.Enabled{return fmt.Errorf("fixture expects YAML/env override")};return nil}
 type Module struct{}
 var ProviderSet=wire.NewSet(New)
-func New(cfg Config)(*Module,error) {
- opts:=&options{Enabled:cfg.DefaultEnabled()}
- loader,err:=config.New(config.Section{Key:"platform.{{name}}",Value:opts})
- if err!=nil{return nil,err};if err:=loader.Load(nil,nil);err!=nil{return nil,err}
+func New(cfg *Config)(*Module,error) {
  probe.Constructed++;probe.Selected="{{name}}"
  return &Module{},nil
 }
 func (*Module) Name() string {return "{{name}}"}
 func (*Module) Components() []kernel.Component {probe.Components++;return []kernel.Component{component{}}}
 func (*Module) Commands() []frameworkcobra.CommandFactory {
- return []frameworkcobra.CommandFactory{func()*cobra.Command{return &cobra.Command{Use:"{{name}}",Short:"Fixture command"}}}
+ return []frameworkcobra.CommandFactory{func()*console.Command{return &console.Command{Use:"{{name}}",Short:"Fixture command"}}}
 }
 type component struct{}
 func (component) Start(context.Context) error {probe.Started++;return nil}
@@ -96,6 +94,7 @@ func (component) Stop(context.Context) error {return nil}
 `
 	for _, name := range []string{"first", "second"} {
 		write(name+"/platform/module.go", strings.ReplaceAll(driver, "{{name}}", name))
+		write(name+"/platform/manifest.yaml", "name: "+name+"\nconfig_key: platform."+name+"\nconfig_example: |\n  enabled: false\n")
 	}
 	write("providers/platform.go", `package providers
 import (
@@ -103,13 +102,13 @@ import (
  second "example.com/selection/second/platform"
  frameworkcobra "gitlab.com/skyrix-lib/framework/cobra"
  "gitlab.com/skyrix-lib/framework/kernel"
- "github.com/spf13/cobra"
+ "gitlab.com/skyrix-lib/framework/cobra/console"
 )
-//skyrix:platform example.com/selection/first/platform config=First
-//skyrix:platform example.com/selection/second/platform config=Second
+//skyrix:platform example.com/selection/first/platform
+//skyrix:platform example.com/selection/second/platform
 func ProvideFirstPlatform(module *first.Module)(*kernel.Platform,error){return kernel.NewPlatform(module)}
 func ProvideSecondPlatform(module *second.Module)(*kernel.Platform,error){return kernel.NewPlatform(module)}
-func ConsoleCommands() []*cobra.Command{return frameworkcobra.ModuleCommands(new(first.Module))}
+func ConsoleCommands() []*console.Command{return frameworkcobra.ModuleCommands(new(first.Module))}
 `)
 	for _, name := range []string{"first", "second"} {
 		title := strings.ToUpper(name[:1]) + name[1:]
@@ -134,11 +133,13 @@ import (
  "example.com/selection/internal/probe"
  "example.com/selection/providers"
  "gitlab.com/skyrix-lib/framework/cobra/console"
+ "gitlab.com/skyrix-lib/framework/cobra/platformcmd"
+ "gitlab.com/skyrix-lib/framework/cobra/configcmd"
  "gitlab.com/skyrix-lib/framework/kernel"
 )
 func main(){
  if len(os.Args)>1 {
-  app:=console.New();app.AddCobra(providers.ConsoleCommands()...)
+  app:=console.New(platformcmd.Command(),configcmd.Env(providers.PlatformSections()...));app.Add(providers.ConsoleCommands()...)
   if err:=app.Execute(context.Background(),os.Args[1:],os.Stdout,os.Stderr);err!=nil{panic(err)}
   if probe.AppConfig+probe.Constructed+probe.Components+probe.Started!=0 {panic("help/completion built the graph")}
   return
@@ -152,15 +153,56 @@ func main(){
 }
 `)
 	}
+
+	write("cmd/jwt/wire.go", `//go:build wireinject
+package main
+import (
+ "github.com/goforj/wire"
+ "gitlab.com/skyrix-lib/framework/extensions/auth/service"
+)
+func verifier(cfg *service.Config)(*service.JWTService,func(),error){wire.Build(newResource,newLogger,service.NewJWTVerifier);return nil,nil,nil}
+func signer(cfg *service.Config)(*service.JWTService,func(),error){wire.Build(newResource,newLogger,blacklist,sessions,service.NewJWTService);return nil,nil,nil}
+`)
+	write("cmd/jwt/main.go", `package main
+import (
+ "errors"
+ "os"
+ "strings"
+ "gitlab.com/skyrix-lib/framework/extensions/auth/contracts"
+ "gitlab.com/skyrix-lib/framework/extensions/auth/service"
+ "gitlab.com/skyrix-lib/framework/logger"
+)
+var events []string
+type resource struct{}
+func newResource()(*resource,func()){events=append(events,"resource");return &resource{},func(){events=append(events,"close-resource")}}
+func newLogger(*resource)(logger.Interface,func()){events=append(events,"logger");return noop{},func(){events=append(events,"close-logger")}}
+type noop struct{}
+func(noop) Error(string,...interface{}){}
+func(noop) Warn(string,...interface{}){}
+func(noop) Info(string,...interface{}){}
+func(noop) Debug(string,...interface{}){}
+func(noop) With(...interface{})logger.Interface{return noop{}}
+func blacklist()contracts.TokenBlacklist{return nil}
+func sessions()contracts.SessionStore{return nil}
+func main(){
+ for _,build:=range []func(*service.Config)(*service.JWTService,func(),error){verifier,signer}{
+  events=nil
+  value,cleanup,err:=build(&service.Config{PublicKeyPath:"absent-public.pem",PrivateKeyPath:"absent-private.pem"})
+  if value!=nil||cleanup!=nil||!errors.Is(err,os.ErrNotExist){panic("constructor did not propagate error")}
+  if strings.Join(events,",")!="resource,logger,close-logger,close-resource"{panic(strings.Join(events,","))}
+ }
+}
+`)
 	generator := filepath.Join(dir, "platformgen")
 	run(template, nil, "go", "build", "-o", generator, "gitlab.com/skyrix-lib/framework/cmd/platformgen")
 	wire := strings.TrimSpace(run(template, nil, "go", "tool", "-n", "wire"))
 	generate := func() {
 		run(filepath.Join(dir, "providers"), nil, generator)
-		run(dir, nil, wire, "gen", "./cmd/first", "./cmd/second")
+		run(dir, nil, wire, "gen", "./cmd/first", "./cmd/second", "./cmd/jwt")
 	}
 	generate()
-	paths := []string{"providers/platform_gen.go", "cmd/first/wire_gen.go", "cmd/second/wire_gen.go"}
+	run(dir, nil, "go", "run", "./cmd/jwt")
+	paths := []string{"providers/platform_gen.go", "cmd/first/wire_gen.go", "cmd/second/wire_gen.go", "cmd/jwt/wire_gen.go"}
 	before := map[string]string{}
 	for _, path := range paths {
 		data, err := os.ReadFile(filepath.Join(dir, path))
@@ -198,6 +240,11 @@ func main(){
 	}
 	run(dir, invalid, "go", "run", "./cmd/first", "first", "--help")
 	run(dir, invalid, "go", "run", "./cmd/first", "completion", "bash")
+	run(dir, invalid, "go", "run", "./cmd/first", "__complete", "first", "")
+	output = run(dir, invalid, "go", "run", "./cmd/first", "config:env")
+	if !strings.Contains(output, "PLATFORM_FIRST_ENABLED") || !strings.Contains(output, "PLATFORM_SECOND_ENABLED") {
+		t.Fatal(output)
+	}
 	cmd := exec.Command("go", "run", "./cmd/first")
 	cmd.Dir = dir
 	cmd.Env = append(append([]string{}, env...), invalid...)
@@ -205,4 +252,122 @@ func main(){
 	if err == nil || !strings.Contains(string(outputBytes), "config platform.first.enabled") {
 		t.Fatalf("selected config was not loaded: %v\n%s", err, outputBytes)
 	}
+	// Exercise add/remove/list through console.Command with real manifests. Keep
+	// user-owned config, domains, graph sources and generated Wire files byte-exact.
+	write("config/user.yaml", "platform:\n  second:\n    password: keep-me\n")
+	write("internal/domain/user.go", "package domain\n")
+	preserved := map[string]string{}
+	for _, path := range []string{"go.mod", "go.sum", "config/user.yaml", "internal/domain/user.go", "providers/platform.go", "cmd/first/wire.go", "cmd/second/wire.go", "cmd/first/wire_gen.go", "cmd/second/wire_gen.go"} {
+		data, err := os.ReadFile(filepath.Join(dir, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		preserved[path] = string(data)
+	}
+	executable := filepath.Join(dir, "console")
+	run(dir, nil, "go", "build", "-o", executable, "./cmd/first")
+	output = run(dir, invalid, executable, "platform", "list")
+	if !strings.Contains(output, "first\tplatform.first") || !strings.Contains(output, "second\tplatform.second") {
+		t.Fatal(output)
+	}
+	// An invalid package/API/manifest must leave declarations and generation intact.
+	for _, bad := range []string{"example.com/selection/missing/platform", "../evil", "example.com/selection/second/platform@v1"} {
+		cmd := exec.Command(executable, "platform", "add", bad)
+		cmd.Dir = dir
+		cmd.Env = env
+		if out, err := cmd.CombinedOutput(); err == nil {
+			t.Fatalf("accepted %s: %s", bad, out)
+		}
+		for _, path := range []string{"providers/platform.go", "providers/platform_gen.go"} {
+			data, _ := os.ReadFile(filepath.Join(dir, path))
+			want := preserved[path]
+			if path == "providers/platform_gen.go" {
+				want = before[path]
+			}
+			if string(data) != want {
+				t.Fatalf("invalid add modified %s", path)
+			}
+		}
+	}
+
+	write("third/platform/module.go", strings.ReplaceAll(driver, "{{name}}", "third"))
+	for _, manifest := range []string{
+		"name: third\nconfig_key: platform.third\nconfig_example: '{}'\nruntimes: [http]\n",
+		"name: first\nconfig_key: platform.third\nconfig_example: '{}'\n",
+		"name: third\nconfig_key: platform.first\nconfig_example: '{}'\n",
+		"name: third\nconfig_key: platform.first.nested\nconfig_example: '{}'\n",
+		"name: third\nconfig_key: platform_first\nconfig_example: '{}'\n",
+	} {
+		write("third/platform/manifest.yaml", manifest)
+		cmd := exec.Command(executable, "platform", "add", "example.com/selection/third/platform")
+		cmd.Dir = dir
+		cmd.Env = env
+		if out, err := cmd.CombinedOutput(); err == nil {
+			t.Fatalf("accepted conflicting manifest %q: %s", manifest, out)
+		}
+		source, _ := os.ReadFile(filepath.Join(dir, "providers/platform.go"))
+		generated, _ := os.ReadFile(filepath.Join(dir, "providers/platform_gen.go"))
+		if string(source) != preserved["providers/platform.go"] || string(generated) != before["providers/platform_gen.go"] {
+			t.Fatal("invalid manifest changed files")
+		}
+	}
+	output = run(dir, nil, executable, "platform", "add", "example.com/selection/second/platform")
+	if !strings.Contains(output, "No changes") {
+		t.Fatal(output)
+	}
+	genPath := filepath.Join(dir, "providers/platform_gen.go")
+	savedPath := filepath.Join(dir, "providers/saved.generated")
+	if err := os.Rename(genPath, savedPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(genPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	failedRemove := exec.Command(executable, "platform", "remove", "example.com/selection/second/platform")
+	failedRemove.Dir = dir
+	failedRemove.Env = env
+	if out, err := failedRemove.CombinedOutput(); err == nil {
+		t.Fatalf("accepted directory as generated file: %s", out)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "providers/platform.go"))
+	if string(data) != preserved["providers/platform.go"] {
+		t.Fatal("failed publication changed declarations")
+	}
+	if err := os.Remove(genPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(savedPath, genPath); err != nil {
+		t.Fatal(err)
+	}
+	run(dir, nil, executable, "platform", "remove", "example.com/selection/second/platform")
+	output = run(dir, nil, executable, "platform", "list")
+	if strings.Contains(output, "second") {
+		t.Fatal(output)
+	}
+	generated, _ := os.ReadFile(filepath.Join(dir, "providers/platform_gen.go"))
+	if strings.Contains(string(generated), "SecondplatformSet") {
+		t.Fatal("removed set retained")
+	}
+	output = run(dir, nil, executable, "platform", "remove", "example.com/selection/second/platform")
+	if !strings.Contains(output, "No changes") {
+		t.Fatal(output)
+	}
+	run(dir, nil, executable, "platform", "add", "example.com/selection/second/platform")
+	for path, want := range preserved {
+		data, err := os.ReadFile(filepath.Join(dir, path))
+		got := string(data)
+		if path == "providers/platform.go" {
+			declaration := "//skyrix:platform example.com/selection/second/platform\n"
+			got = strings.ReplaceAll(got, declaration, "")
+			want = strings.ReplaceAll(want, declaration, "")
+		}
+		if err != nil || got != want {
+			t.Fatalf("changed user file %s", path)
+		}
+	}
+	generated, _ = os.ReadFile(filepath.Join(dir, "providers/platform_gen.go"))
+	if string(generated) != before["providers/platform_gen.go"] {
+		t.Fatal("remove/add generation differs")
+	}
+
 }

@@ -244,7 +244,10 @@ go test ./...
 
 Optional `//skyrix:platform` directives in `providers/platform.go` generate
 independent sets in `providers/platform_gen.go`, such as `EventbusplatformSet`.
-The existing `config=Field` adapter is preserved. Select only the required driver
+Each driver supplies a concrete `Config`, `NewConfig() *Config` defaults and a
+three-field `manifest.yaml` (`name`, `config_key`, `config_example`). Generated
+config providers load only selected `config.Section` values through Template,
+using the manifest key. Select only the required driver
 sets in each binary's `wire.Build`. In `providers/platform.go`, add typed module
 parameters to `ProvideHTTPPlatform` or `ProvideWorkerPlatform` and pass them to
 `kernel.NewPlatform` in lifecycle order. No generated file needs editing.
@@ -252,7 +255,29 @@ parameters to `ProvideHTTPPlatform` or `ProvideWorkerPlatform` and pass them to
 Console commands are selected separately in `ProvideConsolePlatformCommands`
 (`providers/console.go`), using zero-value driver command factories that must not
 load config or construct/start infrastructure for help and completion. The
-template ships with empty platforms and no driver commands.
+template ships with empty platforms and no driver commands. Factories return
+`*console.Command`, registered with `Console.Add`; use `console.With` for lazy DI
+and close the command graph in its owner. `config:env` includes declared driver
+section defaults from `providers.PlatformSections()` without loading settings.
+
+```sh
+go run ./cmd/cobra platform list
+go run ./cmd/cobra platform add <driver-package>
+go run ./cmd/cobra platform remove <driver-package>
+```
+
+These standalone commands accept `--dir` (default `providers`). They update only
+driver declarations and generated independent sets. Repeat adds/missing removals
+print `No changes.` Invalid input leaves files unchanged. Add does not select a
+driver for any application. Graphs, module providers and commands must be edited
+explicitly; remove preserves user config, domains and Wire files. Add dependencies
+with go get yourself, and regenerate Wire using your installed tool. Commands
+never run go get/tidy or install tools. External EventBus needs the new driver
+contract before it can be added; required changes are in the framework
+[ARCHITECTURE.md](../ARCHITECTURE.md#platform-modules).
+
+JWT constructors now return `(*JWTService, error)`. Generated Wire propagates key
+loading errors and cleans up resources; signing/verification rules are unchanged.
 
 The existing providers and domain layout is unchanged: several sets can share
 one provider file, and domains keep their own `ProviderSet`. A driver imported

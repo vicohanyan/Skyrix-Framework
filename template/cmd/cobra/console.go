@@ -47,11 +47,11 @@ func (g graphs) Close() {
 func newConsole(g graphs) *console.Console {
 	app := console.New(corecmd.Commands(corecmd.Options{
 		Migrations:     providers.ProvideMigrationCommands(),
-		ConfigSections: config.Sections(),
+		ConfigSections: append(config.Sections(), providers.PlatformSections()...),
 		Database:       g.Database,
 		Jobs:           console.Derive(g.App, func(a *appGraph) engineJobs.Registry { return a.Jobs }),
 	})...)
 	app.Add(commands.All(console.Derive(g.App, func(a *appGraph) *commands.Deps { return a.Commands }))...)
-	app.AddCobra(providers.ProvideConsolePlatformCommands()...)
+	app.Add(providers.ProvideConsolePlatformCommands()...)
 	return app
 }

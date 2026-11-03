@@ -4,6 +4,7 @@ import (
 	"gitlab.com/skyrix-lib/framework/logger"
 
 	"errors"
+	"fmt"
 
 	"gitlab.com/skyrix-lib/framework/extensions/auth/security"
 
@@ -13,17 +14,20 @@ import (
 var ErrMissingUserIDClaim = errors.New("missing user_id claim")
 
 // NewJWTVerifier loads only the public RSA key and returns a verifier-only JWT service.
-func NewJWTVerifier(logger logger.Interface, cfg *Config) *JWTService {
+func NewJWTVerifier(logger logger.Interface, cfg *Config) (*JWTService, error) {
+	if cfg == nil {
+		return nil, errors.New("JWT verifier: nil config")
+	}
 	publicKey, err := loadPublicKey(cfg.PublicKeyPath)
 	if err != nil {
 		logger.Error("Failed to load JWT public key", "error", err)
-		panic("JWT verifier critical error: " + err.Error())
+		return nil, fmt.Errorf("JWT verifier: load public key: %w", err)
 	}
 	return &JWTService{
 		PublicKey: publicKey,
 		JWTConfig: cfg,
 		Logger:    logger,
-	}
+	}, nil
 }
 
 // ParseToken validates the signature and decodes CustomClaims from the token string.

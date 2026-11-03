@@ -123,7 +123,12 @@ func LoadConfig() (*Config, error) {
 // LoadSection preserves legacy YAML paths and explicit env tags while sharing
 // the framework's loading, metadata and validation rules.
 func (cfg *Config) LoadSection(key string, path []string, target any) error {
-	loader, err := sections.New(sections.Section{Key: key, Value: target, YAMLPath: path, LegacyEnv: true})
+	return cfg.LoadSections(sections.Section{Key: key, Value: target, YAMLPath: path, LegacyEnv: true})
+}
+
+// LoadSections loads only sections requested by the selected providers.
+func (cfg *Config) LoadSections(selected ...sections.Section) error {
+	loader, err := sections.New(selected...)
 	if err != nil {
 		return err
 	}
