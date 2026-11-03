@@ -46,7 +46,7 @@ func buildHTTPApp() (*httpApp, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	platform, err := providers.ProvidePlatform()
+	platform, err := providers.ProvideHTTPPlatform()
 	if err != nil {
 		cleanup2()
 		cleanup()

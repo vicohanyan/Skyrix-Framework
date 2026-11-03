@@ -20,7 +20,7 @@ func buildWorkerApp() (*workerApp, func(), error) {
 		providers.ConfigSet,
 
 		// 2. Compile-time platform modules (platform drivers)
-		providers.PlatformSet,
+		providers.ProvideWorkerPlatform,
 
 		// 3. Final app: platform components in one runtime
 		newWorkerApp,

@@ -18,7 +18,7 @@ import (
 // *enginepostgres.Component or *engineredis.Component to newWorkerApp as the
 // first runtime components.
 func buildWorkerApp() (*workerApp, func(), error) {
-	platform, err := providers.ProvidePlatform()
+	platform, err := providers.ProvideWorkerPlatform()
 	if err != nil {
 		return nil, nil, err
 	}

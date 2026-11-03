@@ -124,7 +124,7 @@ connects it as a platform module (see [Platform modules](#platform-modules)).
 `logger` (`logger.Interface`, with independent slog-backed instances and owner-managed file cleanup),
 `validation` (go-playground validator), `scaffold` and `scaffold/makecmd`
 (`make domain|repository|service|migration`), `cmd/platformgen` (generator of
-the platform composition), `internal/depcheck` (dependency tests).
+independent platform Wire adapters), `internal/depcheck` (dependency tests).
 
 ## Platform modules
 
@@ -138,18 +138,39 @@ application declares its modules in `providers/platform.go`, for example:
 ```
 
 `go generate` runs `cmd/platformgen`, which writes `providers/platform_gen.go`
-with `PlatformSet` (Wire), `ProvidePlatform` and `PlatformCommands`. The
-module's components join the binary's runtime through
-`kernel.Platform.Components()`. Without directives the generated
-`PlatformSet` is empty and every binary gets a platform without modules; the
-template ships this way, with the EventBus directive commented out.
+with an independent Wire set for every directive, for example
+`EventbusplatformSet`. Set names capitalize the existing import alias and append
+`Set`. Each set includes only that driver's `ProviderSet` and its existing
+`config=Field` adapter (`wire.FieldsOf` and `wire.Bind`). Without directives the
+file contains no imports or sets. The generator does not create a shared
+`PlatformSet`, `ProvidePlatform` or `PlatformCommands`.
 
-Connecting a driver takes the same steps for every driver: add its module
-(`go get`), configure it, enable its directive, then run `go generate` and
-`go tool wire gen`. How a driver is configured is described in the driver's
-documentation. The configuration mechanism of platform drivers is
-**planned** to be revised; until then the driver documentation is the
-reference for the current mechanism.
+The application owns `ProvideHTTPPlatform` and `ProvideWorkerPlatform` in
+`providers/platform.go`. Each binary's `wire.Build` explicitly selects its driver
+sets and corresponding platform provider. Add typed module parameters to that
+provider and pass them to `kernel.NewPlatform` in lifecycle order. The returned
+components join the runtime through `kernel.Platform.Components()`. The template
+ships with empty platforms and the EventBus directive commented out.
+
+Console selects commands separately in the application-owned
+`providers.ProvideConsolePlatformCommands`, for example with
+`frameworkcobra.ModuleCommands(new(selecteddriver.Module))`. Factories must work
+on zero-value modules without loading settings, building a graph or starting
+components just to list commands or show help.
+
+Several independent sets remain in the same providers package; domains retain
+their own `ProviderSet`. Importing a shared package may put all its driver imports
+in `go list -deps`, but Wire calls only the constructors required by the selected
+graph. Adding a driver directive does not load its configuration, construct its
+module, start its components or register its commands by itself. No binary
+registry, runtime filtering or startup discovery is involved.
+
+Connecting a driver: add its module (`go get`), configure it according to its
+documentation, declare the optional config adapter, select its set in the chosen
+Wire graphs, update their application-owned platform providers, then regenerate
+platform adapters and Wire. `config=Field` is unchanged; revising driver
+configuration and migrating driver commands to `console.Command` remain future
+work. No manifest integration is part of this change.
 
 ## Binaries and Wire graphs (template)
 
@@ -157,9 +178,9 @@ Each binary has its own `wire.go` and includes only the provider sets it uses.
 
 | Binary       | Provider sets                                                                                                                   | Runtime components (start order)        |
 |--------------|---------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------|
-| `cmd/http`   | `ConfigSet`, `PostgresSet`, `PlatformSet`, `DomainProviderSet`, handlers, global middleware, `AuthVerifierSet`, router, `HTTPProviderSet` | postgres → platform modules → HTTP host |
+| `cmd/http`   | `ConfigSet`, `PostgresSet`, `ProvideHTTPPlatform`, `DomainProviderSet`, handlers, global middleware, `AuthVerifierSet`, router, `HTTPProviderSet` | postgres → platform modules → HTTP host |
 | `cmd/cobra`  | `buildApp`: `ConfigSet`, `ConsoleJobProviderSet`, `commands.ProviderSet`; `buildDatabase`: `ConfigSet`, `PostgresSet`, `DatabaseCommandSet` | — (runs one command)                    |
-| `cmd/worker` | `ConfigSet`, `PlatformSet`                                                                                                      | platform modules (none by default)      |
+| `cmd/worker` | `ConfigSet`, `ProvideWorkerPlatform`                                                                                                      | platform modules (none by default)      |
 
 `RedisSet`, `AuthProviderSet` (auth with Redis stores) and
 `TenantProviderSet` exist in `providers` but no binary includes them by
@@ -177,7 +198,7 @@ Every console command is described once, as a `console.Command`: metadata
 for help and completion, and a runner that gets its dependencies only when the
 command runs. The framework commands are described by `cobra/corecmd`, the
 application commands by `internal/commands.All`, and platform module commands
-are added as Cobra commands (`PlatformCommands`). The descriptions are cheap
+are added as explicitly selected Cobra commands (`ProvideConsolePlatformCommands`). The descriptions are cheap
 to build; the dependency graphs are Wire injectors wrapped in a
 `console.Graph` and called lazily, right before the command that needs them:
 

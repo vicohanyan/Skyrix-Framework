@@ -154,8 +154,8 @@ support v0.2.x.
 
 - Compile-time platform modules (`kernel.Module`, `kernel.Platform`) contribute
   lifecycle components and, through `cobra.CommandProvider`, console commands.
-  Applications declare them with `//skyrix:platform` directives and generate
-  the composition with `template/internal/scaffold/platformgen`.
+  Optional `//skyrix:platform` directives generate independent Wire adapters;
+  the application explicitly composes modules and selects console commands.
 - `kernel.Run` runs a binary: it starts the runtime, waits for the context or
   a component failure (`kernel.FailureNotifier`), and stops the runtime in
   reverse order within a timeout. `httpserver.Host` binds its listener during
@@ -194,9 +194,13 @@ support v0.2.x.
   `http.Server.ReadHeaderTimeout` (Slowloris protection); zero or negative
   uses `httpserver.DefaultReadHeaderTimeout` (10s). The template sets
   `APP_READ_HEADER_TIMEOUT`.
-- `cmd/platformgen` accepts a `platform.go` without `//skyrix:platform`
-  directives and generates an empty but valid `PlatformSet`
-  (`ProvidePlatform` returns a platform without modules).
+- `cmd/platformgen` emits independent per-driver Wire sets, preserving
+  `config=Field`. It no longer generates an aggregate `PlatformSet`,
+  `ProvidePlatform` or `PlatformCommands`; no directives produces an empty
+  declaration file. Template explicitly selects modules per Wire graph and
+  console commands through application providers. Existing providers/domain
+  structure is retained. Tests exercise real Wire generation, independent driver
+  config/construction/lifecycle, help/completion without graphs and repeatability.
 
 ### Fixed
 
@@ -218,7 +222,7 @@ support v0.2.x.
 
 - The application template targets v0.3.0 only. The `Queue` configuration
   section is renamed to `EventBus`, the kernel container provider is removed,
-  and platform modules are wired through the generated `PlatformSet`.
+  and platform modules are selected explicitly in each binary's Wire graph.
 - The template builds three binaries with separate Wire graphs: `cmd/http`,
   `cmd/cobra` and `cmd/worker` (events and background work, no HTTP and no
   database). Infrastructure is split into `ConfigSet`, `PostgresSet` and

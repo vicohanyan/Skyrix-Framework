@@ -229,8 +229,25 @@ Env collisions are checked across the explicit composition, including overrides.
 load HTTP/Postgres/Auth/Redis/Tenant only when used by the binary; migration
 settings explicitly select Postgres. Adding a section requires an explicit typed
 provider that loads and returns its consumer-owned configuration; this needs no
-network provider. ConfigSet alone does not enable infrastructure. Existing
-`config=Field` platformgen generation is unchanged; future driver sections must
+network provider. ConfigSet alone does not enable infrastructure. The existing
+`config=Field` platformgen adapter is unchanged; driver sections must
 be selected explicitly by their composition/provider until platformgen migration.
 No global registry, config:env command, driver manifest or platform management
 command is introduced.
+
+
+## Explicit platform composition
+
+`cmd/platformgen` generates independent driver sets in the application's
+`providers/platform_gen.go`, retaining `config=Field` bindings. It generates no
+shared platform constructor or all-driver command list. Select individual sets
+in each binary's `wire.Build`, and pass only the selected typed modules to an
+application-owned platform provider. Console command selection is explicit and
+independent of runtime composition. Several sets can share one providers file;
+domains keep their own ProviderSets. See [Platform modules](ARCHITECTURE.md#platform-modules).
+
+The Template demonstrates this with `ProvideHTTPPlatform`, `ProvideWorkerPlatform`
+and `ProvideConsolePlatformCommands`. Unselected drivers' configuration and
+components are not built merely because their sets are declared. Shared package
+imports can still appear in `go list -deps`; this does not imply construction or
+startup. No binary directives, registries or runtime filters are introduced.

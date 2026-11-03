@@ -237,16 +237,28 @@ swag init -g cmd/http/main.go -o docs --parseDependency --parseInternal
 ## Code generation and tests
 
 ```bash
-go generate ./...                                      # Wire injectors and providers/platform_gen.go
+GOWORK=off go generate ./...                           # Wire injectors and providers/platform_gen.go
 go tool wire gen ./cmd/http ./cmd/cobra ./cmd/worker  # Wire only
 go test ./...
 ```
 
-Platform modules (platform drivers) are declared with `//skyrix:platform`
-comments in `providers/platform.go`; `go generate` regenerates
-`providers/platform_gen.go` with `framework/cmd/platformgen`. The template
-ships without platform modules, so `PlatformSet` is empty. EventBus (NATS) is
-connected as a platform driver: `providers/platform.go` lists the steps.
+Optional `//skyrix:platform` directives in `providers/platform.go` generate
+independent sets in `providers/platform_gen.go`, such as `EventbusplatformSet`.
+The existing `config=Field` adapter is preserved. Select only the required driver
+sets in each binary's `wire.Build`. In `providers/platform.go`, add typed module
+parameters to `ProvideHTTPPlatform` or `ProvideWorkerPlatform` and pass them to
+`kernel.NewPlatform` in lifecycle order. No generated file needs editing.
+
+Console commands are selected separately in `ProvideConsolePlatformCommands`
+(`providers/console.go`), using zero-value driver command factories that must not
+load config or construct/start infrastructure for help and completion. The
+template ships with empty platforms and no driver commands.
+
+The existing providers and domain layout is unchanged: several sets can share
+one provider file, and domains keep their own `ProviderSet`. A driver imported
+by the shared providers package can appear in `go list -deps` without being
+constructed or started. Independent driver selection and generation repeatability
+are covered by `providers/platform_selection_test.go`.
 
 ## Layout
 

@@ -20,7 +20,7 @@ func buildHTTPApp() (*httpApp, func(), error) {
 		providers.PostgresSet,
 
 		// 3. Compile-time platform modules
-		providers.PlatformSet,
+		providers.ProvideHTTPPlatform,
 
 		// 4. Example domain
 		providers.DomainProviderSet,
