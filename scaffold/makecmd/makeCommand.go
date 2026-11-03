@@ -3,9 +3,7 @@
 package makecmd
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -81,8 +79,14 @@ func (c *MakeCommand) migrationCommand() *console.Command {
 		Short: "Create an empty SQL migration for hand-written changes",
 		Long: `Create migrations/<YYYYMMDDHHMMSS>_<name>.sql for SQL that is not generated from
 the models (extensions, triggers, functions, data fixes). With --notx the file
-is named *.notx.sql and runs outside a transaction. When atlas is installed,
-atlas.sum is updated with "atlas migrate hash".`,
+is named *.notx.sql and runs outside a transaction.
+
+The command needs the Atlas CLI: it creates migrations/atlas.sum on the first
+migration and updates it with "atlas migrate hash" afterwards. When SQL
+migrations already exist, atlas.sum must be present and match them; otherwise
+nothing is written and the command asks for an explicit
+"atlas migrate hash --dir file://migrations". After writing SQL into the new
+file, run that command and commit the SQL file and atlas.sum together.`,
 		Args: cobra.ExactArgs(1),
 		Flags: func(flags *pflag.FlagSet) {
 			flags.Bool("notx", false, "run the migration outside a transaction (e.g. CREATE INDEX CONCURRENTLY)")
@@ -105,6 +109,10 @@ atlas.sum is updated with "atlas migrate hash".`,
 			if err != nil {
 				return err
 			}
+			binary, err := lookupAtlas()
+			if err != nil {
+				return fmt.Errorf("make migration needs the Atlas CLI to maintain %s/%s; nothing was written: %w", atlas.MigrationsDir, atlas.SumFile, err)
+			}
 			existing, err := atlas.MigrationFiles(root)
 			if err != nil {
 				return err
@@ -115,7 +123,6 @@ atlas.sum is updated with "atlas migrate hash".`,
 				}
 			}
 
-			relative := filepath.Join(atlas.MigrationsDir, fileName)
 			op, err := newOperation(root)
 			if err != nil {
 				return err
@@ -128,55 +135,28 @@ atlas.sum is updated with "atlas migrate hash".`,
 			if err != nil {
 				return err
 			}
-			if err := op.create(relative, content); err != nil {
-				return err
-			}
 
-			binary, lookupErr := lookupAtlas()
-			if lookupErr != nil {
-				if err := op.apply(); err != nil {
-					return err
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "migration created: %s\n", relative)
-				fmt.Fprintf(cmd.ErrOrStderr(), "atlas.sum not updated: %v\nrun \"atlas migrate hash --dir file://%s\" after installing atlas\n", lookupErr, atlas.MigrationsDir)
-				return nil
-			}
-			sumPath, err := op.path(filepath.Join(atlas.MigrationsDir, "atlas.sum"))
+			workspace, err := atlas.OpenWorkspace(op.root)
 			if err != nil {
 				return err
 			}
-			sum, err := op.optional(filepath.Join(atlas.MigrationsDir, "atlas.sum"))
+			defer workspace.Close()
+			out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
+			if err := workspace.Verify(cmd.Context(), binary, out, errOut); err != nil {
+				return err
+			}
+			if err := workspace.Add(fileName, content); err != nil {
+				return err
+			}
+			sum, err := workspace.Hash(cmd.Context(), binary, out, errOut)
 			if err != nil {
+				return fmt.Errorf("update %s/%s; nothing was written: %w", atlas.MigrationsDir, atlas.SumFile, err)
+			}
+			if err := workspace.Publish([]string{fileName}, sum); err != nil {
 				return err
 			}
-			mode := os.FileMode(0644)
-			if info, err := os.Stat(sumPath); err == nil {
-				mode = info.Mode().Perm()
-			}
-			if err := op.applyAfter(publishFile, func() error {
-				if err := atlas.Hash(cmd.Context(), binary, root, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
-					var restore error
-					if sum == nil {
-						restore = os.Remove(sumPath)
-						if os.IsNotExist(restore) {
-							restore = nil
-						}
-					} else {
-						var tmp string
-						tmp, restore = writeTemp(filepath.Dir(sumPath), sum, mode)
-						if restore == nil {
-							restore = os.Rename(tmp, sumPath)
-							os.Remove(tmp)
-						}
-					}
-					return errors.Join(fmt.Errorf("update atlas.sum: %w", err), restore)
-				}
-				return nil
-			}); err != nil {
-				return err
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "migration created: %s\n", relative)
-
+			fmt.Fprintf(out, "migration created: %s\n", filepath.Join(atlas.MigrationsDir, fileName))
+			fmt.Fprintf(out, "after editing it, run %q and commit the SQL file with %s/%s\n", atlas.HashCommand, atlas.MigrationsDir, atlas.SumFile)
 			return nil
 		}),
 	}

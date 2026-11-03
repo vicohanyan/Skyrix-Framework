@@ -101,11 +101,31 @@ func TestDefaultTemplateWithoutTenant(t *testing.T) {
 }
 
 // TestTemplateHasNoFrameworkFixtures keeps framework development fixtures out
-// of the copied Template: no testdata directories and no tests that reach
-// sibling directories outside the Template.
+// of the copied Template. Template tests may keep their own data in testdata
+// directories, but no testdata directory may carry a framework fixture (a
+// directory named like one in integration/testdata, or files wiring the
+// external libraries), and no test or test data may reach sibling
+// directories outside the Template.
 func TestTemplateHasNoFrameworkFixtures(t *testing.T) {
 	l := projectLayout(t)
-	err := filepath.WalkDir(l.template, func(path string, entry fs.DirEntry, err error) error {
+	entries, err := os.ReadDir(l.fixtures)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixtures := map[string]bool{}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			fixtures[entry.Name()] = true
+		}
+	}
+	if len(fixtures) == 0 {
+		t.Fatalf("no framework fixtures found in %s", l.fixtures)
+	}
+	markers := []string{
+		"skyrix-tenant-lib", "skyrix-auth-lib", "gitlab.com/skyrix-lib/tenant",
+		"cmd/platformgen", "integration/testdata", `filepath.Abs("..")`,
+	}
+	err = filepath.WalkDir(l.template, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -114,19 +134,20 @@ func TestTemplateHasNoFrameworkFixtures(t *testing.T) {
 			if rel == "logs" {
 				return filepath.SkipDir
 			}
-			if entry.Name() == "testdata" {
-				t.Errorf("Template contains a fixture directory: %s", rel)
+			if filepath.Base(filepath.Dir(path)) == "testdata" && fixtures[entry.Name()] {
+				t.Errorf("Template contains framework fixture %s; it belongs in integration/testdata", rel)
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, "_test.go") {
+		inTestdata := strings.Contains("/"+filepath.ToSlash(rel), "/testdata/")
+		if !inTestdata && !strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		for _, marker := range []string{"skyrix-tenant-lib", "skyrix-auth-lib", "cmd/platformgen", `filepath.Abs("..")`} {
+		for _, marker := range markers {
 			if strings.Contains(string(data), marker) {
 				t.Errorf("%s references %s; framework fixtures belong in integration/", rel, marker)
 			}

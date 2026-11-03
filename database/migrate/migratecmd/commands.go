@@ -254,7 +254,15 @@ func (c *Commands) diffCommand() *console.Command {
 Atlas configuration is generated temporarily from application settings; no
 atlas.hcl is required. MIGRATIONS_DEV_URL in Template can override the disposable
 PostgreSQL development database. The application database is never used as scratch
-storage. --env overrides the generated environment label (APP_ENV in Template).`,
+storage. --env overrides the generated environment label (APP_ENV in Template).
+
+Atlas works on a private copy of migrations/. When SQL migrations exist,
+migrations/atlas.sum must be present and match them, otherwise nothing is
+generated and the command asks for an explicit
+"atlas migrate hash --dir file://migrations". New migration files and the
+updated atlas.sum (created on the first migration) are written to the project
+together; when there are no schema changes, or on any error, the project is
+left untouched. Commit the SQL files and atlas.sum together.`,
 		Args: cobra.ExactArgs(1),
 		Flags: func(flags *pflag.FlagSet) {
 			flags.String("env", "", "Generated Atlas environment label (default: application settings)")
@@ -274,28 +282,41 @@ storage. --env overrides the generated environment label (APP_ENV in Template).`
 				return err
 			}
 
-			before, err := atlas.MigrationFiles(c.ProjectRoot)
+			out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
+			workspace, err := atlas.OpenWorkspace(c.ProjectRoot)
 			if err != nil {
 				return err
 			}
-			if err := atlas.Diff(cmd.Context(), binary, c.ProjectRoot, name, options, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
+			defer workspace.Close()
+			if err := workspace.Verify(cmd.Context(), binary, out, errOut); err != nil {
 				return err
 			}
-			after, err := atlas.MigrationFiles(c.ProjectRoot)
+			options.Dir = workspace.Dir()
+			if err := atlas.Diff(cmd.Context(), binary, c.ProjectRoot, name, options, out, errOut); err != nil {
+				return fmt.Errorf("%w; nothing was written", err)
+			}
+			created, err := workspace.Created()
 			if err != nil {
 				return err
-			}
-
-			created := atlas.NewFiles(before, after)
-			if err := atlas.ValidateFiles(created); err != nil {
-				return fmt.Errorf("atlas created migrations with unsupported names; rename them and run atlas migrate hash: %w", err)
 			}
 			if len(created) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "no schema changes")
+				fmt.Fprintln(out, "no schema changes")
+				return nil
+			}
+			if err := atlas.ValidateFiles(created); err != nil {
+				return fmt.Errorf("atlas created migrations with unsupported names; nothing was written: %w", err)
+			}
+			sum, err := workspace.Hash(cmd.Context(), binary, out, errOut)
+			if err != nil {
+				return fmt.Errorf("update %s/%s; nothing was written: %w", atlas.MigrationsDir, atlas.SumFile, err)
+			}
+			if err := workspace.Publish(created, sum); err != nil {
+				return err
 			}
 			for _, file := range created {
-				fmt.Fprintf(cmd.OutOrStdout(), "created %s/%s\n", atlas.MigrationsDir, file)
+				fmt.Fprintf(out, "created %s/%s\n", atlas.MigrationsDir, file)
 			}
+			fmt.Fprintf(out, "updated %s/%s; commit it together with the SQL files\n", atlas.MigrationsDir, atlas.SumFile)
 			return nil
 		}),
 	}

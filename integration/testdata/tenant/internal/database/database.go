@@ -5,7 +5,6 @@ package database
 
 import (
 	"gitlab.com/skyrix-lib/framework/database/dbcmd"
-	exampleEntity "gitlab.com/skyrix-lib/template/internal/domain/example/entity"
 	tenantEntity "gitlab.com/skyrix-lib/tenant/entity"
 
 	"github.com/goforj/wire"
@@ -15,7 +14,6 @@ import (
 // including the tenants table of gitlab.com/skyrix-lib/tenant.
 func Models() dbcmd.Models {
 	return dbcmd.Models{
-		&exampleEntity.Task{},
 		&tenantEntity.Tenant{},
 	}
 }

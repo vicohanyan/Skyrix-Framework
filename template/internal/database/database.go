@@ -5,18 +5,19 @@ package database
 
 import (
 	"gitlab.com/skyrix-lib/framework/database/dbcmd"
-	exampleEntity "gitlab.com/skyrix-lib/template/internal/domain/example/entity"
 
 	"github.com/goforj/wire"
 )
 
 // Models returns the GORM entities synchronised by "db automigrate". The
-// optional gitlab.com/skyrix-lib/tenant model is not listed: an application
+// Template lists none, so no command creates tables on its own. To run the
+// example domain against a database, add &exampleEntity.Task{} (package
+// internal/domain/example/entity) here or to tools/schemaloader and generate
+// a migration (see README "Migrations"). The optional
+// gitlab.com/skyrix-lib/tenant model is not listed either: an application
 // that enables tenants adds it here (see README "Tenants").
 func Models() dbcmd.Models {
-	return dbcmd.Models{
-		&exampleEntity.Task{},
-	}
+	return dbcmd.Models{}
 }
 
 // Seeders returns the seeders run by "db seed" and after "db automigrate".

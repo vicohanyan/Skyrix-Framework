@@ -9,13 +9,11 @@ import (
 
 	"ariga.io/atlas-provider-gorm/gormschema"
 
-	exampleEntity "gitlab.com/skyrix-lib/template/internal/domain/example/entity"
 	tenantEntity "gitlab.com/skyrix-lib/tenant/entity"
 )
 
 func main() {
 	statements, err := gormschema.New("postgres").Load(
-		&exampleEntity.Task{},
 		&tenantEntity.Tenant{},
 	)
 	if err != nil {

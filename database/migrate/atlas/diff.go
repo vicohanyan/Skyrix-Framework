@@ -19,6 +19,10 @@ const DefaultDevURL = "docker://postgres/18/dev?search_path=public"
 type DiffOptions struct {
 	Env    string
 	DevURL string
+	// Dir is the absolute migration directory Atlas reads and writes; empty
+	// means migrations/ under the project root. Generators pass a Workspace
+	// copy so that Atlas never writes into the project directly.
+	Dir string
 }
 
 // Diff generates a migration using a private temporary Atlas configuration.
@@ -36,6 +40,9 @@ func Diff(ctx context.Context, binary, root, name string, options DiffOptions, s
 	}
 	if options.DevURL == "" {
 		options.DevURL = DefaultDevURL
+	}
+	if options.Dir == "" {
+		options.Dir = filepath.Join(absolute, MigrationsDir)
 	}
 	config := diffConfig(absolute, options)
 	file, err := os.CreateTemp("", "skyrix-atlas-*.hcl")
@@ -79,7 +86,7 @@ env %s {
     }
   }
 }
-`, hclString(root), hclString(options.Env), hclString(options.DevURL), hclString(fileURL(filepath.Join(root, MigrationsDir))))
+`, hclString(root), hclString(options.Env), hclString(options.DevURL), hclString(fileURL(options.Dir)))
 }
 
 // Quote an HCL literal, including template markers. No config value is evaluated

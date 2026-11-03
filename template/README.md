@@ -7,9 +7,11 @@ then on. The framework itself is a Go module the project imports; see
 [../README.md](../README.md) and [../ARCHITECTURE.md](../ARCHITECTURE.md).
 
 The template contains one example domain (`internal/domain/example`, an
-"example task" CRUD over HTTP) to show how domains, handlers, repositories,
-units of work and migrations fit together. Delete it once the first real
-domain exists.
+"example task" CRUD over HTTP) to show how domains, handlers, repositories
+and units of work fit together. Delete it once the first real domain exists.
+The Template ships without SQL migrations and without `migrations/atlas.sum`,
+and no command creates the example table on its own: to run the example
+against a database, follow [Migrations](#migrations).
 
 ## Starting a new project
 
@@ -276,6 +278,43 @@ loads the GORM models through `tools/schemaloader` (list every model managed by
 migrations in `tools/schemaloader/main.go`). The command creates a private temporary
 Atlas config and removes it on completion; no project `atlas.hcl` is needed.
 
+The Template ships with an empty `migrations/` (only `embed.go` and a
+`README.md` placeholder; the package embeds `*` and exposes only `*.sql` files)
+and no `atlas.sum`. `db migrate` on it applies nothing; `db migrate`,
+`migrate:status` and `migrate:baseline` read the embedded files and never
+create or change project files, and the runner does not use `atlas.sum`.
+
+Checksum rules for `make migration` and `db migrate:diff` (both need the Atlas
+CLI and report its absence before writing anything):
+
+- Atlas works on a private copy of `migrations/`. New SQL files and
+  `atlas.sum` are written to the project together, and only when a migration
+  was created: a diff without schema changes, or any error, leaves the
+  project untouched (files created by the failed operation are removed, the
+  previous `atlas.sum` stays).
+- On an empty directory the first generated migration also creates
+  `atlas.sum`.
+- When SQL migrations exist, `atlas.sum` is verified first (with
+  `atlas migrate hash` on the copy) and updated after generation. A missing
+  or mismatching `atlas.sum` is an error; it is never recomputed silently.
+- Commit the SQL files and `atlas.sum` together.
+- Never edit an applied migration. If a migration that is not applied
+  anywhere was changed on purpose (for example after writing SQL into a file
+  from `make migration`), review the change and run
+  `atlas migrate hash --dir file://migrations` explicitly. `atlas.sum` only
+  protects the files in the repository; the history of applied migrations
+  lives in the database (`cobra db migrate:status`).
+
+To run the example domain against a database, opt in explicitly:
+
+1. Add `&exampleEntity.Task{}` (`internal/domain/example/entity`) to the list
+   in `tools/schemaloader/main.go` (and, for local `db automigrate` only, to
+   `Models` in `internal/database/database.go`).
+2. Generate the migration: `cobra db migrate:diff create_example_tasks`.
+3. Review `migrations/<version>_create_example_tasks.sql` and commit it with
+   `migrations/atlas.sum`.
+4. Apply it: `cobra db migrate`.
+
 The Framework default scratch database is disposable PostgreSQL 18 in Docker.
 Override it through the existing application configuration when needed:
 
@@ -517,8 +556,11 @@ All outputs and registrations are prepared before application. Existing output
 files and symbol conflicts are errors; repeated generation never overwrites.
 Write failures roll back only the operation's files, restoring previous contents
 and modes and removing only newly created empty directories. External edits
-detected while publishing/rolling back are preserved and reported. Failed Atlas
-hashing also restores the previous atlas.sum and removes the new migration.
+detected while publishing/rolling back are preserved and reported.
+`make migration` needs the Atlas CLI (checked before anything is written): it
+verifies the existing atlas.sum, prepares the new file and atlas.sum in a
+private copy of `migrations/` and publishes both together; a failed hash
+leaves the project unchanged.
 
 ### Domain transactions
 

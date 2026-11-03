@@ -153,14 +153,27 @@ func TestApplicationCommandRunsWithDependencies(t *testing.T) {
 	}
 }
 
-// TestDatabaseCommandBuildsOnlyDatabaseGraph runs db seed against a fake
-// PostgreSQL server: it builds the database graph only, and connecting fails.
+// probeModel is a test-only GORM model: the Template lists no models, so
+// db automigrate would otherwise have nothing to synchronise.
+type probeModel struct{ ID uint64 }
+
+// TestDatabaseCommandBuildsOnlyDatabaseGraph runs db automigrate against a
+// fake PostgreSQL server: it builds the database graph only, and connecting
+// fails.
 func TestDatabaseCommandBuildsOnlyDatabaseGraph(t *testing.T) {
 	database, redis := countingListener(t), countingListener(t)
 	setConsoleEnv(t, database.addr, redis.addr)
 
 	g := newCountingGraphs()
 	defer g.Close()
+	g.graphs.Database = console.NewGraph(console.NeedsDatabase, func() (*dbcmd.Deps, func(), error) {
+		g.database++
+		deps, cleanup, err := buildDatabase()
+		if err == nil {
+			deps.Models = append(deps.Models, &probeModel{})
+		}
+		return deps, cleanup, err
+	})
 	if _, err := execute(t, newConsole(g.graphs), "db", "automigrate"); err == nil {
 		t.Fatal("db automigrate against a fake server error = nil")
 	}

@@ -14,6 +14,25 @@ compatibility layer for v0.2.x applications: services and modules built for
 v0.2.x must be migrated before upgrading. Modules released for v0.3.0 do not
 support v0.2.x.
 
+### Empty Template migrations and atlas.sum handling
+
+- Template ships without SQL migrations and without `atlas.sum`; the example
+  model is no longer listed in `tools/schemaloader` or `Models`, so no
+  command creates the example table on its own. `migrations` embeds `*` with
+  a `README.md` placeholder and exposes only `*.sql` files, so it compiles
+  with an empty directory. The README documents the explicit opt-in for the
+  example table.
+- `db migrate:diff` and `make migration` work on a private copy of
+  `migrations/` (`atlas.Workspace`, `atlas.DiffOptions.Dir`): they verify the
+  existing `atlas.sum` first (`atlas.ErrSumMissing`, `atlas.ErrSumMismatch`,
+  with the explicit `atlas migrate hash` command), create it with the first
+  migration, update it afterwards and publish SQL and checksum together. No
+  schema changes or any error leave the project untouched.
+- **Breaking:** `make migration` now requires the Atlas CLI and fails before
+  writing when it is missing (previously it created the file and skipped
+  `atlas.sum`).
+- The migration runner is unchanged and still ignores `atlas.sum`.
+
 ### Integration harness outside Template
 
 - Add `integration/`, a separate test-only module (in `go.work`) for fixtures

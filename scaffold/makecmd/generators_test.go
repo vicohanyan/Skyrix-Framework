@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"gitlab.com/skyrix-lib/framework/cobra/console"
+
+	"gitlab.com/skyrix-lib/framework/database/migrate/atlas/atlastest"
 )
 
 const fixtureModule = "code.example.dev/finance/ledger/v2"
@@ -179,6 +181,8 @@ func golden(t *testing.T, name, got string) {
 func TestAllGeneratorsGolden(t *testing.T) {
 	root := registrationProject(t)
 	maker := testMaker(root)
+	binary, _ := atlastest.Install(t)
+	maker.LookupAtlas = func() (string, error) { return binary, nil }
 	for _, args := range allActions {
 		if _, err := executeScaffoldCommand(maker.Command().Cobra(), args...); err != nil {
 			t.Fatalf("%v: %v", args, err)
@@ -186,8 +190,12 @@ func TestAllGeneratorsGolden(t *testing.T) {
 	}
 	snapshot := projectSnapshot(t, root)
 	paths := make([]string, 0, len(snapshot))
+	// atlas.sum comes from the fake Atlas CLI; its format is not part of the golden file.
+	if sum := snapshot["migrations/atlas.sum"]; !strings.Contains(sum, "20261103102030_custom_trigger.sql") {
+		t.Fatalf("make migration did not write atlas.sum: %q", sum)
+	}
 	for path := range snapshot {
-		if !strings.HasPrefix(path, "stubs/") {
+		if !strings.HasPrefix(path, "stubs/") && path != "migrations/atlas.sum" {
 			paths = append(paths, path)
 		}
 	}
@@ -371,6 +379,8 @@ func TestMakeHelpNeedsNoProject(t *testing.T) {
 func TestGeneratedTemplateBuildsAndWire(t *testing.T) {
 	root, framework := copyTemplate(t)
 	maker := testMaker(root)
+	fakeAtlas, _ := atlastest.Install(t)
+	maker.LookupAtlas = func() (string, error) { return fakeAtlas, nil }
 	for _, args := range allActions {
 		if _, err := executeScaffoldCommand(maker.Command().Cobra(), args...); err != nil {
 			t.Fatalf("%v: %v", args, err)

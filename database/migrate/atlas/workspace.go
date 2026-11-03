@@ -1,0 +1,315 @@
+package atlas
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"slices"
+
+	"gitlab.com/skyrix-lib/framework/database/migrate"
+)
+
+// SumFile is the Atlas checksum file of the migration directory. SQL
+// migrations and atlas.sum are committed together; the migration runner
+// ignores the file and never needs it.
+const SumFile = migrate.AtlasSumFile
+
+// HashCommand is the explicit command that rewrites atlas.sum. Generators
+// never run it on a directory whose checksum is missing or wrong: the user
+// reviews the SQL files and runs it deliberately.
+const HashCommand = "atlas migrate hash --dir file://" + MigrationsDir
+
+var (
+	// ErrSumMissing reports SQL migrations without atlas.sum.
+	ErrSumMissing = errors.New("checksum file is missing")
+	// ErrSumMismatch reports an atlas.sum that does not match the SQL migrations.
+	ErrSumMismatch = errors.New("checksum file does not match the SQL migrations")
+)
+
+// Workspace is a private copy of the project's migration directory (its SQL
+// files and atlas.sum). Generators let Atlas write only into the copy and
+// publish the result into the project in one step, so a failed or empty
+// generation leaves the project untouched.
+type Workspace struct {
+	root    string // absolute project root
+	tmp     string // temporary root; the copy lives in tmp/migrations
+	files   []string
+	sum     []byte
+	hasSum  bool
+	publish func(temp, path string, exists bool) error
+}
+
+// OpenWorkspace copies the migration directory of the project at root into
+// a temporary directory. A missing directory is an empty one. Close removes
+// the copy.
+func OpenWorkspace(root string) (*Workspace, error) {
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return nil, fmt.Errorf("migration project root: %w", err)
+	}
+	if err := rejectSymlink(filepath.Join(absolute, MigrationsDir)); err != nil {
+		return nil, err
+	}
+	files, err := MigrationFiles(absolute)
+	if err != nil {
+		return nil, err
+	}
+	sum, hasSum, err := readOptional(filepath.Join(absolute, MigrationsDir, SumFile))
+	if err != nil {
+		return nil, err
+	}
+	tmp, err := os.MkdirTemp("", "skyrix-migrations-*")
+	if err != nil {
+		return nil, fmt.Errorf("create migration workspace: %w", err)
+	}
+	w := &Workspace{root: absolute, tmp: tmp, files: files, sum: sum, hasSum: hasSum, publish: publishFile}
+	if err := w.copyIn(); err != nil {
+		return nil, errors.Join(err, w.Close())
+	}
+	return w, nil
+}
+
+func (w *Workspace) copyIn() error {
+	if err := os.Mkdir(w.Dir(), 0o755); err != nil {
+		return fmt.Errorf("create migration workspace: %w", err)
+	}
+	for _, name := range w.files {
+		source := filepath.Join(w.root, MigrationsDir, name)
+		if err := rejectSymlink(source); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return fmt.Errorf("read migration %s: %w", name, err)
+		}
+		if err := os.WriteFile(filepath.Join(w.Dir(), name), data, 0o644); err != nil {
+			return fmt.Errorf("copy migration %s: %w", name, err)
+		}
+	}
+	if w.hasSum {
+		if err := os.WriteFile(filepath.Join(w.Dir(), SumFile), w.sum, 0o644); err != nil {
+			return fmt.Errorf("copy %s: %w", SumFile, err)
+		}
+	}
+	return nil
+}
+
+// Dir is the absolute path of the copied migration directory.
+func (w *Workspace) Dir() string { return filepath.Join(w.tmp, MigrationsDir) }
+
+// Close removes the temporary copy.
+func (w *Workspace) Close() error {
+	if err := os.RemoveAll(w.tmp); err != nil {
+		return fmt.Errorf("remove migration workspace: %w", err)
+	}
+	return nil
+}
+
+// Verify checks the existing atlas.sum before anything is generated. An
+// empty directory without atlas.sum is valid (the first generation creates
+// it). SQL migrations without atlas.sum, or an atlas.sum that differs from
+// the one "atlas migrate hash" computes for them, are errors: the checksum is
+// never rewritten silently.
+func (w *Workspace) Verify(ctx context.Context, binary string, stdout, stderr io.Writer) error {
+	if !w.hasSum {
+		if len(w.files) == 0 {
+			return nil
+		}
+		return fmt.Errorf("%w: %s contains %d SQL migration(s) but no %s; review them and run %q explicitly, then commit the SQL files and %s together",
+			ErrSumMissing, MigrationsDir, len(w.files), SumFile, HashCommand, SumFile)
+	}
+	computed, err := w.Hash(ctx, binary, stdout, stderr)
+	if err != nil {
+		return fmt.Errorf("verify %s/%s: %w", MigrationsDir, SumFile, err)
+	}
+	if !bytes.Equal(computed, w.sum) {
+		return fmt.Errorf("%w: %s/%s differs from the checksum of the SQL files (a migration was edited, added or removed by hand); review the changes and run %q explicitly. The checksum does not replace the history of applied migrations in the database",
+			ErrSumMismatch, MigrationsDir, SumFile, HashCommand)
+	}
+	return nil
+}
+
+// Hash runs "atlas migrate hash" on the copy and returns the new atlas.sum.
+func (w *Workspace) Hash(ctx context.Context, binary string, stdout, stderr io.Writer) ([]byte, error) {
+	if err := Hash(ctx, binary, w.tmp, stdout, stderr); err != nil {
+		return nil, err
+	}
+	sum, ok, err := readOptional(filepath.Join(w.Dir(), SumFile))
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("atlas migrate hash did not write %s", SumFile)
+	}
+	return sum, nil
+}
+
+// Add writes a new migration file into the copy.
+func (w *Workspace) Add(name string, data []byte) error {
+	if name != filepath.Base(name) || filepath.Ext(name) != ".sql" {
+		return fmt.Errorf("invalid migration file name %q", name)
+	}
+	file, err := os.OpenFile(filepath.Join(w.Dir(), name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return fmt.Errorf("stage migration %s: %w", name, err)
+	}
+	_, writeErr := file.Write(data)
+	return errors.Join(writeErr, file.Close())
+}
+
+// Created returns the SQL files of the copy that are not in the project.
+func (w *Workspace) Created() ([]string, error) {
+	after, err := MigrationFiles(w.tmp)
+	if err != nil {
+		return nil, err
+	}
+	return NewFiles(w.files, after), nil
+}
+
+// Publish copies the created migrations and sum into the project. It first
+// checks that the project directory still matches the copied state, creates
+// the files exclusively and replaces atlas.sum atomically as the last step.
+// On failure it removes the files it created (and the directory, if it
+// created it), leaving atlas.sum and every other file as they were.
+func (w *Workspace) Publish(created []string, sum []byte) (result error) {
+	if len(created) == 0 {
+		return errors.New("no migrations to publish")
+	}
+	dir := filepath.Join(w.root, MigrationsDir)
+	if err := rejectSymlink(dir); err != nil {
+		return err
+	}
+	current, err := MigrationFiles(w.root)
+	if err != nil {
+		return err
+	}
+	currentSum, currentHasSum, err := readOptional(filepath.Join(dir, SumFile))
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(current, w.files) || currentHasSum != w.hasSum || !bytes.Equal(currentSum, w.sum) {
+		return fmt.Errorf("%s changed during generation; nothing was written", MigrationsDir)
+	}
+
+	var (
+		createdDir bool
+		written    []string
+		temps      []string
+	)
+	defer func() {
+		for _, temp := range temps {
+			os.Remove(temp)
+		}
+		if result == nil {
+			return
+		}
+		for i := len(written) - 1; i >= 0; i-- {
+			if err := os.Remove(written[i]); err != nil && !os.IsNotExist(err) {
+				result = errors.Join(result, fmt.Errorf("remove %s: %w", written[i], err))
+			}
+		}
+		if createdDir {
+			os.Remove(dir)
+		}
+	}()
+
+	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", MigrationsDir, err)
+		}
+		createdDir = true
+	} else if err != nil {
+		return err
+	}
+	stage := func(data []byte) (string, error) {
+		temp, err := writeTemp(dir, data, 0o644)
+		if err == nil {
+			temps = append(temps, temp)
+		}
+		return temp, err
+	}
+	for _, name := range created {
+		data, err := os.ReadFile(filepath.Join(w.Dir(), name))
+		if err != nil {
+			return fmt.Errorf("read generated migration %s: %w", name, err)
+		}
+		temp, err := stage(data)
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dir, name)
+		if err := w.publish(temp, path, false); err != nil {
+			return fmt.Errorf("write %s/%s: %w", MigrationsDir, name, err)
+		}
+		written = append(written, path)
+	}
+	temp, err := stage(sum)
+	if err != nil {
+		return err
+	}
+	// atlas.sum is replaced last and atomically, so a failure before or
+	// during this step leaves the original checksum in place.
+	if err := w.publish(temp, filepath.Join(dir, SumFile), w.hasSum); err != nil {
+		return fmt.Errorf("write %s/%s: %w", MigrationsDir, SumFile, err)
+	}
+	return nil
+}
+
+// publishFile creates new files exclusively and replaces existing ones atomically.
+func publishFile(temp, path string, exists bool) error {
+	if !exists {
+		return os.Link(temp, path)
+	}
+	return os.Rename(temp, path)
+}
+
+func writeTemp(dir string, data []byte, mode os.FileMode) (string, error) {
+	file, err := os.CreateTemp(dir, ".skyrix-migration-*")
+	if err != nil {
+		return "", err
+	}
+	name := file.Name()
+	if err = file.Chmod(mode); err == nil {
+		_, err = file.Write(data)
+	}
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		os.Remove(name)
+		return "", err
+	}
+	return name, nil
+}
+
+func readOptional(path string) ([]byte, bool, error) {
+	if err := rejectSymlink(path); err != nil {
+		return nil, false, err
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s: %w", path, err)
+	}
+	return data, true, nil
+}
+
+func rejectSymlink(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("symlink is unsupported: %s", path)
+	}
+	return nil
+}

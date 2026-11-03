@@ -3,6 +3,7 @@ package migratecmd
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"gitlab.com/skyrix-lib/framework/cobra/console"
 	"gitlab.com/skyrix-lib/framework/database/migrate"
+	"gitlab.com/skyrix-lib/framework/database/migrate/atlas/atlastest"
 )
 
 func TestCommandsValidateFlagsBeforeLoadingSettings(t *testing.T) {
@@ -115,44 +117,188 @@ func TestSettingsCleanupAfterAtlasOptionsLookup(t *testing.T) {
 	}
 }
 
-func TestDiffLoadsConfiguredDevURLWithExplicitEnv(t *testing.T) {
-	root := t.TempDir()
-	binary := filepath.Join(t.TempDir(), "atlas")
-	script := `#!/bin/sh
-printf '%s\n' "$@" > atlas-args
-cp "${5#file://}" atlas-config
-mkdir -p migrations
-: > migrations/20261103000000_add_field.sql
-`
-	if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", filepath.Dir(binary)+string(os.PathListSeparator)+os.Getenv("PATH"))
-	loads, closes := 0, 0
+func diffCommands(root string, loads, closes *int) *Commands {
 	commands := New(func() (Settings, func(), error) {
-		loads++
-		return Settings{AtlasEnv: "local", AtlasDevURL: "docker://postgres/18/configured"}, func() { closes++ }, nil
+		*loads++
+		return Settings{AtlasEnv: "local", AtlasDevURL: "docker://postgres/18/configured"}, func() { *closes++ }, nil
 	}, fstest.MapFS{})
 	commands.ProjectRoot = root
+	return commands
+}
+
+func runDiff(commands *Commands, args ...string) (string, error) {
 	command := commands.Command().Cobra()
 	var output strings.Builder
 	command.SetOut(&output)
 	command.SetErr(&output)
-	command.SetArgs([]string{"migrate:diff", "add_field", "--env", "production"})
-	if err := command.Execute(); err != nil {
+	command.SetArgs(append([]string{"migrate:diff"}, args...))
+	command.SilenceUsage = true
+	command.SilenceErrors = true
+	err := command.Execute()
+	return output.String(), err
+}
+
+func writeProjectFile(t *testing.T, root, relative, data string) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config, err := os.ReadFile(filepath.Join(root, "atlas-config"))
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDiffLoadsConfiguredDevURLWithExplicitEnv(t *testing.T) {
+	_, log := atlastest.Install(t)
+	t.Setenv("FAKE_ATLAS_SQL", "CREATE TABLE t (id int);")
+	configCopy := filepath.Join(t.TempDir(), "config.hcl")
+	t.Setenv("FAKE_ATLAS_CONFIG", configCopy)
+	root := t.TempDir()
+	loads, closes := 0, 0
+	output, err := runDiff(diffCommands(root, &loads, &closes), "add_field", "--env", "production")
+	if err != nil {
+		t.Fatal(err, output)
+	}
+	config, err := os.ReadFile(configCopy)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(config), `env "production"`) || !strings.Contains(string(config), "docker://postgres/18/configured") {
+	// Atlas writes into a private copy, never into the project directory.
+	if !strings.Contains(string(config), `env "production"`) || !strings.Contains(string(config), "docker://postgres/18/configured") ||
+		strings.Contains(string(config), filepath.Join(root, "migrations")) {
 		t.Fatal(string(config))
+	}
+	calls := atlastest.Invocations(t, log)
+	if len(calls) != 2 || !strings.HasPrefix(calls[0], "migrate diff add_field --config file://") || !strings.HasSuffix(calls[0], "--env production") {
+		t.Fatalf("atlas calls = %q", calls)
 	}
 	if loads != 1 || closes != 1 {
 		t.Fatalf("loads=%d closes=%d", loads, closes)
 	}
-	if !strings.Contains(output.String(), "created migrations/20261103000000_add_field.sql") {
-		t.Fatal(output.String())
+	if !strings.Contains(output, "created migrations/20261103000000_add_field.sql") {
+		t.Fatal(output)
+	}
+}
+
+func TestDiffFirstAndNextGeneration(t *testing.T) {
+	_, log := atlastest.Install(t)
+	root := t.TempDir()
+	writeProjectFile(t, root, "migrations/README.md", "user placeholder")
+	loads, closes := 0, 0
+	commands := diffCommands(root, &loads, &closes)
+
+	// No schema changes: nothing is written, not even atlas.sum.
+	before := atlastest.Snapshot(t, root)
+	if output, err := runDiff(commands, "noop"); err != nil || !strings.Contains(output, "no schema changes") {
+		t.Fatalf("diff without changes = %q, %v", output, err)
+	}
+	if after := atlastest.Snapshot(t, root); !maps.Equal(before, after) {
+		t.Fatalf("project changed without schema changes: %v", after)
+	}
+
+	// The first generation on an empty directory creates the migration and atlas.sum.
+	t.Setenv("FAKE_ATLAS_SQL", "CREATE TABLE a (id int);")
+	if _, err := runDiff(commands, "create_a"); err != nil {
+		t.Fatal(err)
+	}
+	first := atlastest.Snapshot(t, root)
+	if first["migrations/20261103000000_create_a.sql"] == "" || !strings.Contains(first["migrations/atlas.sum"], "20261103000000_create_a.sql") {
+		t.Fatalf("after first generation: %v", first)
+	}
+
+	// The next generation verifies the checksum first, then updates it.
+	t.Setenv("FAKE_ATLAS_SQL", "CREATE TABLE b (id int);")
+	t.Setenv("FAKE_ATLAS_VERSION", "20261103000001")
+	calls := len(atlastest.Invocations(t, log))
+	if _, err := runDiff(commands, "create_b"); err != nil {
+		t.Fatal(err)
+	}
+	next := atlastest.Invocations(t, log)[calls:]
+	if len(next) != 3 || !strings.HasPrefix(next[0], "migrate hash") || !strings.HasPrefix(next[1], "migrate diff") || !strings.HasPrefix(next[2], "migrate hash") {
+		t.Fatalf("second generation calls = %q", next)
+	}
+	second := atlastest.Snapshot(t, root)
+	if second["migrations/atlas.sum"] == first["migrations/atlas.sum"] || second["migrations/README.md"] != "user placeholder" {
+		t.Fatalf("after second generation: %v", second)
+	}
+}
+
+func TestDiffWritesNothingOnError(t *testing.T) {
+	_, log := atlastest.Install(t)
+	for _, test := range []struct {
+		name     string
+		setup    func(t *testing.T, root string)
+		want     string
+		noAtlas  bool
+		diffRuns bool
+	}{
+		{
+			name: "checksum missing",
+			setup: func(t *testing.T, root string) {
+				writeProjectFile(t, root, "migrations/20261101000000_existing.sql", "SELECT 1;")
+			},
+			want: "atlas migrate hash --dir file://migrations",
+		},
+		{
+			name: "checksum mismatch",
+			setup: func(t *testing.T, root string) {
+				writeProjectFile(t, root, "migrations/20261101000000_existing.sql", "SELECT 1;")
+				writeProjectFile(t, root, "migrations/atlas.sum", "h1:stale\n")
+			},
+			want: "does not match",
+		},
+		{
+			name:     "diff fails after writing a file",
+			setup:    func(t *testing.T, root string) { t.Setenv("FAKE_ATLAS_FAIL", "diff") },
+			want:     "nothing was written",
+			diffRuns: true,
+		},
+		{
+			name: "hash fails",
+			setup: func(t *testing.T, root string) {
+				t.Setenv("FAKE_ATLAS_SQL", "CREATE TABLE a (id int);")
+				t.Setenv("FAKE_ATLAS_FAIL", "hash")
+			},
+			want:     "nothing was written",
+			diffRuns: true,
+		},
+		{
+			name:    "atlas missing",
+			noAtlas: true,
+			want:    "atlas CLI is not installed",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("FAKE_ATLAS_FAIL", "")
+			t.Setenv("FAKE_ATLAS_SQL", "")
+			if err := os.WriteFile(log, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			root := t.TempDir()
+			writeProjectFile(t, root, "migrations/README.md", "user placeholder")
+			if test.setup != nil {
+				test.setup(t, root)
+			}
+			if test.noAtlas {
+				t.Setenv("PATH", t.TempDir())
+			}
+			before := atlastest.Snapshot(t, root)
+			loads, closes := 0, 0
+			_, err := runDiff(diffCommands(root, &loads, &closes), "add_field")
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("diff error = %v, want %q", err, test.want)
+			}
+			if after := atlastest.Snapshot(t, root); !maps.Equal(before, after) {
+				t.Fatalf("project changed:\nbefore %v\nafter  %v", before, after)
+			}
+			ranDiff := strings.Contains(strings.Join(atlastest.Invocations(t, log), "\n"), "migrate diff")
+			if ranDiff != test.diffRuns {
+				t.Fatalf("atlas migrate diff ran = %v, want %v", ranDiff, test.diffRuns)
+			}
+			if loads != closes {
+				t.Fatalf("loads=%d closes=%d", loads, closes)
+			}
+		})
 	}
 }

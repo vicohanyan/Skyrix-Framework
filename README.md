@@ -390,8 +390,11 @@ All outputs and registrations are prepared before application. Existing output
 files and symbol conflicts are errors; repeated generation never overwrites.
 Write failures roll back only the operation's files, restoring previous contents
 and modes and removing only newly created empty directories. External edits
-detected while publishing/rolling back are preserved and reported. Failed Atlas
-hashing also restores the previous atlas.sum and removes the new migration.
+detected while publishing/rolling back are preserved and reported.
+`make migration` needs the Atlas CLI (checked before anything is written): it
+verifies the existing atlas.sum, prepares the new file and atlas.sum in a
+private copy of `migrations/` and publishes both together; a failed hash
+leaves the project unchanged.
 
 ## Integration harness
 
@@ -526,3 +529,9 @@ removed on success, error or cancellation. Existing project Atlas configs are
 ignored and preserved; migrate their dev URL to MIGRATIONS_DEV_URL, or invoke
 Atlas directly for custom workflows. `--env` labels the generated environment.
 Atlas CLI must be installed; the default scratch URL also requires Docker.
+Atlas runs on a private copy of `migrations/`: when SQL migrations exist,
+`atlas.sum` is verified first (missing or mismatching checksums are errors
+that ask for an explicit `atlas migrate hash --dir file://migrations`), and
+the new SQL files are published with the updated (or, on an empty directory,
+newly created) `atlas.sum` only when a migration was generated. The runner
+ignores `atlas.sum`.

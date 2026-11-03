@@ -338,6 +338,11 @@ What a command needs follows from its runner (`console.Standalone` or
   lives once in Framework and uses disposable PostgreSQL 18 in Docker. Main DB
   credentials are not copied into the Atlas config. Model loader and migration
   paths follow project conventions; custom project HCL is ignored and preserved.
+  `db migrate:diff` and `make migration` run Atlas on a private copy of
+  `migrations/` (`atlas.Workspace`): they verify `atlas.sum` before
+  generating (missing or mismatching checksums are errors, never recomputed
+  silently), then publish the new SQL files and `atlas.sum` together; no
+  changes or an error leave the project untouched.
   Migrations are applied by
   `db migrate`, never by `atlas migrate apply`.
 - `db automigrate` (GORM AutoMigrate + seeders) is for development only and is

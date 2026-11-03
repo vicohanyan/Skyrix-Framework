@@ -172,10 +172,7 @@ func publishFile(temp, path string, exists bool) error {
 	return os.Rename(temp, path)
 }
 func (op *operation) apply() error { return op.applyWith(publishFile) }
-func (op *operation) applyWith(publish func(string, string, bool) error) error {
-	return op.applyAfter(publish, nil)
-}
-func (op *operation) applyAfter(publish func(string, string, bool) error, after func() error) (result error) {
+func (op *operation) applyWith(publish func(string, string, bool) error) (result error) {
 	keys := make([]string, 0, len(op.files))
 	for key := range op.files {
 		keys = append(keys, key)
@@ -278,9 +275,6 @@ func (op *operation) applyAfter(publish func(string, string, bool) error, after 
 			return fmt.Errorf("write %s: %w", key, err)
 		}
 		applied = append(applied, ch)
-	}
-	if after != nil {
-		return after()
 	}
 	return nil
 }
