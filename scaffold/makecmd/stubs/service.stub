@@ -1,0 +1,7 @@
+package services
+
+// {{.Type}}Service is an application service skeleton.
+// Add domain interface dependencies with the operations this service needs.
+type {{.Type}}Service struct{}
+
+func New{{.Type}}Service() *{{.Type}}Service { return &{{.Type}}Service{} }

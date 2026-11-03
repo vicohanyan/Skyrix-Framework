@@ -1,0 +1,7 @@
+// Package {{.Package}} contains the {{.Type}} domain.
+package {{.Package}}
+
+import "github.com/goforj/wire"
+
+// ProviderSet contains this domain's constructors and interface bindings.
+var ProviderSet = wire.NewSet()

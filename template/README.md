@@ -136,7 +136,7 @@ cobra make migration <name>      # empty migration for hand-written SQL
 cobra db automigrate             # DEV ONLY: GORM AutoMigrate + seeders
 cobra db seed                    # run the seeders
 cobra jobs:run --name <job>      # run a registered job synchronously
-cobra make domain|repository|service <Name>
+cobra make <generator> <name>    # see Scaffolding generators below
 cobra hello                      # example application command
 ```
 
@@ -305,3 +305,96 @@ migrations/                       SQL migrations
 providers/                        Wire provider sets
 tools/schemaloader/               GORM schema for Atlas
 ```
+
+## Scaffolding generators
+
+Run `cobra make ...` from the project root (the directory containing go.mod).
+Generators use only source files and stubs: no working configuration, connections
+or application Wire graph is loaded. Module imports are read from go.mod.
+
+```sh
+cobra make domain sales/order_flow
+cobra make entity sales/order_flow/line_item
+cobra make repository sales/order_flow/line_item
+cobra make service sales/order_flow/reconcile_batch
+cobra make handler sales/order_flow/invoice_view
+cobra make command reconcile_accounts
+cobra make command scan_invoices --db
+cobra make job refresh_balances
+cobra make seeder currency_codes
+cobra make stubs
+cobra make migration custom_trigger [--notx]
+```
+
+Names consist of ASCII letter-led segments with digits after the first letter;
+`_` and `-` separate compound words. Empty segments, whitespace, Go keywords,
+absolute paths, traversal and symlinks below the project root are rejected.
+Domain path segments also reject `main` and `init`. Domain paths may be nested:
+`sales/order_flow` becomes `internal/domain/sales/orderflow` (package `orderflow`,
+type prefix `SalesOrderFlow`). Domain components require `<domain-path>/<name>`.
+Commands, jobs and seeders accept a single name, with no `/`. Snake/kebab case
+is recommended: `reconcile_batch` becomes type `ReconcileBatch`, file prefix
+`reconcileBatch`, CLI name `reconcile-batch`; job names use dots (`refresh.balances`).
+Existing CamelCase input is accepted, with its remaining case preserved in Go
+identifiers; its CLI name is simply lowercased. Names with the same normalized
+file/type conflict rather than overwrite each other.
+
+| Generator | Output and registration |
+| --- | --- |
+| domain | `provider.go` and package docs under dto/entity/interfaces/repository/services/unitOfWork; adds its ProviderSet to `providers/domains.go`'s DomainProviderSet and ConsoleDomainProviderSet |
+| entity | Model and constructor in the domain's entity package; adds a model literal to `internal/database.Models` |
+| repository/service | Concrete skeleton and constructor in the domain's repository/services package; adds constructor to its ProviderSet |
+| handler | BaseHandler-based HTTP skeleton in `internal/handlers`; adds constructor and Handlers field in `providers/handlers.go`; no route is added |
+| command | console.Command factory in `internal/commands`; registers in `commands.All`, receiving the existing lazy application graph |
+| command --db | Registers in `commands.DatabaseAll`, receiving the existing lazy database graph; help/completion never build it |
+| job | Job implementation in `internal/jobs`; constructor in both JobProviderSet and ConsoleJobProviderSet, field in Jobs, and registration in ProvideRegisteredJobsRegistry |
+| seeder | Idempotent no-op Seeder in `internal/database/seeders`; constructor in database.ProviderSet and parameter/entry in Seeders |
+| migration | Versioned SQL file; preserves --notx and installed Atlas hashing behavior |
+
+Domain skeletons contain no invented business operations, HTTP/DB dependencies
+or UnitOfWork contract. Repositories/services start as concrete types: introduce
+meaningful domain interfaces and Wire bindings when defining actual operations.
+Entities are registered for explicit model/schema commands; generation itself
+never applies a schema change or creates a migration. Seeders have no storage
+dependency until you add one. Command factories defer dependencies with
+`console.With`; Template registers DatabaseAll against its existing database graph.
+
+Registrations use Go AST locations, preserving comments and user registrations.
+Supported points are explicit `wire.NewSet(...)` variables, Handlers/Jobs structs
+with `wire.Struct(new(Bundle), "*")`, direct returned slice literals in
+Models/Seeders/All/DatabaseAll, and the existing straight-line jobs registry.
+Seeders may already have named parameters. Keyed slice entries, indirect returns,
+custom registry control flow, duplicate imports and ambiguous shapes are rejected
+before publishing any files. Custom projects must provide these Template points;
+the generator does not invent or rewrite arbitrary composition code.
+
+After changing providers, job bundles or seeder signatures, explicitly run:
+
+```sh
+go tool wire gen ./cmd/http ./cmd/cobra ./cmd/worker
+go test ./...
+go build ./...
+```
+
+Generators never modify binary Wire sources or wire_gen.go, install tools, run
+go get/tidy, or select platform drivers. Use an already built console while
+scaffolding, or regenerate Wire before rebuilding/running the console from source
+when a changed signature makes the old injector stale. Command descriptions alone
+need no Wire regeneration. Implement placeholders and add HTTP routes explicitly.
+
+`make stubs` exports the embedded templates to `stubs/skyrix/*.stub`. It refuses
+an export if any target already exists, preserving all existing stubs. For every
+generator (including migration), a project file takes priority over the embedded
+one; missing files fall back individually. All use Go text/template with strict
+missing-key errors. Available fields: `Module`, `DomainImport` (domain generators),
+`Package` (destination Go package), `Type`, `Var`, `Use` and `JobName`. `doc.stub`
+is used for domain package docs; `command_db.stub` is the DB command variant;
+`migration.stub` is empty by default and receives Module/Use. Keep each template's
+required type/factory names and signatures; generated Go is formatted and parsed.
+
+All outputs and registrations are prepared before application. Existing output
+files and symbol conflicts are errors; repeated generation never overwrites.
+Write failures roll back only the operation's files, restoring previous contents
+and modes and removing only newly created empty directories. External edits
+detected while publishing/rolling back are preserved and reported. Failed Atlas
+hashing also restores the previous atlas.sum and removes the new migration.

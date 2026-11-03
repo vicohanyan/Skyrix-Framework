@@ -1,0 +1,21 @@
+package handlers
+
+import (
+ "net/http"
+ httphandler "gitlab.com/skyrix-lib/framework/httpserver/handler"
+ "gitlab.com/skyrix-lib/framework/logger"
+ "gitlab.com/skyrix-lib/framework/validation"
+)
+
+type {{.Type}}Handler struct { *httphandler.BaseHandler }
+
+func New{{.Type}}Handler(log logger.Interface, validator *validation.Validator) *{{.Type}}Handler {
+ h:=&{{.Type}}Handler{BaseHandler:&httphandler.BaseHandler{Logger:log,Validator:validator}}
+ h.BaseHandler.WithAutoName(h)
+ return h
+}
+
+// Handle is a placeholder; register a route explicitly after implementing it.
+func (h *{{.Type}}Handler) Handle(w http.ResponseWriter, r *http.Request) {
+ w.WriteHeader(http.StatusNotImplemented)
+}

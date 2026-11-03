@@ -3,6 +3,7 @@
 package makecmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,126 +40,39 @@ func NewMakeCommand() *MakeCommand {
 // Command describes the "make" group. Its commands are standalone
 // (console.NeedsNothing): they only write files in the project.
 func (c *MakeCommand) Command() *console.Command {
-	return &console.Command{
-		Use:   "make",
-		Short: "Create project scaffolding",
-		Commands: []*console.Command{
-			{
-				Use:   "domain <Name>",
-				Short: "Create a business-domain directory skeleton",
-				Args:  cobra.ExactArgs(1),
-				Run: console.Standalone(func(cmd *cobra.Command, args []string) error {
-					name, root, err := c.resolve(args[0])
-					if err != nil {
-						return err
-					}
-					domainRoot := c.domainDirectory(root, name.Package)
-					if _, err := os.Stat(domainRoot); err == nil {
-						return fmt.Errorf("domain already exists: %s", name.Package)
-					} else if !os.IsNotExist(err) {
-						return fmt.Errorf("inspect domain: %w", err)
-					}
-
-					directories := []struct {
-						path        string
-						packageName string
-					}{
-						{"dto", "dto"},
-						{"entity", "entity"},
-						{"interfaces", "interfaces"},
-						{"repository", "repository"},
-						{"services", "services"},
-						{"unitOfWork", "unitofwork"},
-					}
-					if err := os.MkdirAll(domainRoot, 0o755); err != nil {
-						return fmt.Errorf("create domain directory: %w", err)
-					}
-					provider := fmt.Sprintf(`// Package %s contains the %s business domain.
-				package %s
-				
-				import "github.com/goforj/wire"
-				
-				// ProviderSet contains the domain providers.
-				var ProviderSet = wire.NewSet()
-				`, name.Package, name.Type, name.Package)
-					if err := support.WriteNewFile(filepath.Join(domainRoot, "provider.go"), []byte(provider)); err != nil {
-						_ = os.RemoveAll(domainRoot)
-						return err
-					}
-					for _, directory := range directories {
-						doc := fmt.Sprintf("// Package %s contains %s domain scaffolding.\npackage %s\n", directory.packageName, name.Type, directory.packageName)
-						if err := support.WriteNewFile(filepath.Join(domainRoot, directory.path, "doc.go"), []byte(doc)); err != nil {
-							_ = os.RemoveAll(domainRoot)
-							return err
-						}
-					}
-					fmt.Fprintf(cmd.OutOrStdout(), "domain created: %s\n", name.Package)
-					return nil
-				}),
-			},
-			{
-				Use:   "repository <Name>",
-				Short: "Create a minimal domain repository skeleton",
-				Args:  cobra.ExactArgs(1),
-				Run: console.Standalone(func(cmd *cobra.Command, args []string) error {
-					name, root, err := c.resolve(args[0])
-					if err != nil {
-						return err
-					}
-					if err := c.requireDomain(root, name.Package); err != nil {
-						return err
-					}
-					content := fmt.Sprintf(`package repository
-
-				// %sRepository provides persistence scaffolding for the %s domain.
-				type %sRepository struct{}
-				
-				// New%sRepository constructs a %s repository.
-				func New%sRepository() *%sRepository {
-					return &%sRepository{}
-				}
-				`, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type)
-					path := filepath.Join(c.domainDirectory(root, name.Package), "repository", name.Package+"Repository.go")
-					if err := support.WriteNewFile(path, []byte(content)); err != nil {
-						return err
-					}
-					fmt.Fprintf(cmd.OutOrStdout(), "repository created: %s\n", name.Package)
-					return nil
-				}),
-			},
-			{
-				Use:   "service <Name>",
-				Short: "Create a minimal domain service skeleton",
-				Args:  cobra.ExactArgs(1),
-				Run: console.Standalone(func(cmd *cobra.Command, args []string) error {
-					name, root, err := c.resolve(args[0])
-					if err != nil {
-						return err
-					}
-					if err := c.requireDomain(root, name.Package); err != nil {
-						return err
-					}
-					content := fmt.Sprintf(`package services
-
-				// %sService provides application-service scaffolding for the %s domain.
-				type %sService struct{}
-				
-				// New%sService constructs a %s service.
-				func New%sService() *%sService {
-					return &%sService{}
-				}
-				`, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type, name.Type)
-					path := filepath.Join(c.domainDirectory(root, name.Package), "services", name.Package+"Service.go")
-					if err := support.WriteNewFile(path, []byte(content)); err != nil {
-						return err
-					}
-					fmt.Fprintf(cmd.OutOrStdout(), "service created: %s\n", name.Package)
-					return nil
-				}),
-			},
-			c.migrationCommand(),
-		},
+	group := &console.Command{Use: "make", Short: "Create project scaffolding"}
+	for _, kind := range []string{"domain", "entity", "repository", "service", "handler", "command", "job", "seeder", "stubs"} {
+		kind := kind
+		args := cobra.ExactArgs(1)
+		use := kind + " <name>"
+		if kind == "stubs" {
+			args = cobra.NoArgs
+			use = kind
+		}
+		command := &console.Command{Use: use, Short: "Generate " + kind, Args: args}
+		if kind == "command" {
+			command.Flags = func(f *pflag.FlagSet) { f.Bool("db", false, "use the existing lazy database graph") }
+		}
+		command.Run = console.Standalone(func(cmd *cobra.Command, args []string) error {
+			raw := ""
+			if len(args) > 0 {
+				raw = args[0]
+			}
+			db := false
+			if kind == "command" {
+				db, _ = cmd.Flags().GetBool("db")
+			}
+			result, err := c.generate(kind, raw, db)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), result)
+			return nil
+		})
+		group.Commands = append(group.Commands, command)
 	}
+	group.Commands = append(group.Commands, c.migrationCommand())
+	return group
 }
 
 func (c *MakeCommand) migrationCommand() *console.Command {
@@ -202,51 +116,68 @@ atlas.sum is updated with "atlas migrate hash".`,
 			}
 
 			relative := filepath.Join(atlas.MigrationsDir, fileName)
-			if err := support.WriteNewFile(filepath.Join(root, relative), nil); err != nil {
+			op, err := newOperation(root)
+			if err != nil {
+				return err
+			}
+			module, err := support.ModulePath(root)
+			if err != nil {
+				return err
+			}
+			content, err := renderStub(op, "migration", stubData{Module: module, Use: args[0]}, false)
+			if err != nil {
+				return err
+			}
+			if err := op.create(relative, content); err != nil {
+				return err
+			}
+
+			binary, lookupErr := lookupAtlas()
+			if lookupErr != nil {
+				if err := op.apply(); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "migration created: %s\n", relative)
+				fmt.Fprintf(cmd.ErrOrStderr(), "atlas.sum not updated: %v\nrun \"atlas migrate hash --dir file://%s\" after installing atlas\n", lookupErr, atlas.MigrationsDir)
+				return nil
+			}
+			sumPath, err := op.path(filepath.Join(atlas.MigrationsDir, "atlas.sum"))
+			if err != nil {
+				return err
+			}
+			sum, err := op.optional(filepath.Join(atlas.MigrationsDir, "atlas.sum"))
+			if err != nil {
+				return err
+			}
+			mode := os.FileMode(0644)
+			if info, err := os.Stat(sumPath); err == nil {
+				mode = info.Mode().Perm()
+			}
+			if err := op.applyAfter(publishFile, func() error {
+				if err := atlas.Hash(cmd.Context(), binary, root, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
+					var restore error
+					if sum == nil {
+						restore = os.Remove(sumPath)
+						if os.IsNotExist(restore) {
+							restore = nil
+						}
+					} else {
+						var tmp string
+						tmp, restore = writeTemp(filepath.Dir(sumPath), sum, mode)
+						if restore == nil {
+							restore = os.Rename(tmp, sumPath)
+							os.Remove(tmp)
+						}
+					}
+					return errors.Join(fmt.Errorf("update atlas.sum: %w", err), restore)
+				}
+				return nil
+			}); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "migration created: %s\n", relative)
 
-			binary, err := lookupAtlas()
-			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "atlas.sum not updated: %v\nrun \"atlas migrate hash --dir file://%s\" after installing atlas\n", err, atlas.MigrationsDir)
-				return nil
-			}
-			if err := atlas.Hash(cmd.Context(), binary, root, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
-				return fmt.Errorf("update atlas.sum: %w", err)
-			}
 			return nil
 		}),
 	}
-}
-
-func (c *MakeCommand) resolve(raw string) (support.Name, string, error) {
-	name, err := support.NormalizeName(raw)
-	if err != nil {
-		return support.Name{}, "", err
-	}
-	root, err := support.ProjectRoot(c.ProjectRoot)
-	return name, root, err
-}
-
-func (c *MakeCommand) domainDirectory(root, name string) string {
-	dir := c.DomainDir
-	if dir == "" {
-		dir = DefaultDomainDir
-	}
-	return filepath.Join(root, filepath.FromSlash(dir), name)
-}
-
-func (c *MakeCommand) requireDomain(root, name string) error {
-	info, err := os.Stat(c.domainDirectory(root, name))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("domain %s does not exist; run make domain %s first", name, name)
-		}
-		return fmt.Errorf("inspect domain %s: %w", name, err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("domain path is not a directory: %s", c.domainDirectory(root, name))
-	}
-	return nil
 }

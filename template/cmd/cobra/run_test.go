@@ -26,6 +26,14 @@ var helpAndStandaloneArgs = [][]string{
 	{"hello", "--help"},
 	{"make", "--help"},
 	{"make", "domain", "--help"},
+	{"make", "entity", "--help"},
+	{"make", "repository", "--help"},
+	{"make", "service", "--help"},
+	{"make", "handler", "--help"},
+	{"make", "command", "--db", "--help"},
+	{"make", "job", "--help"},
+	{"make", "seeder", "--help"},
+	{"make", "stubs", "--help"},
 	{"completion", "bash"},
 	{"config:env"},
 	{"config:env", "--section", "redis"},
@@ -158,6 +166,15 @@ func chdirToProject(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/app\n\ngo 1.27\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// make domain now registers its set in the application's explicit domain
+	// composition; the fixture supplies that point without loading the graph.
+	if err := os.Mkdir(filepath.Join(dir, "providers"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	source := []byte("package providers\nimport \"github.com/goforj/wire\"\nvar DomainProviderSet=wire.NewSet()\nvar ConsoleDomainProviderSet=wire.NewSet()\n")
+	if err := os.WriteFile(filepath.Join(dir, "providers/domains.go"), source, 0644); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(dir)

@@ -1,0 +1,15 @@
+// User domain composition.
+package providers // package comment
+
+import sales "code.example.dev/finance/ledger/v2/internal/domain/sales"
+
+import di "github.com/goforj/wire"
+
+// UserSet stays untouched.
+var UserSet = di.NewSet()
+var DomainProviderSet = di.NewSet(UserSet, /* keep domain */
+	sales.ProviderSet,
+)
+var ConsoleDomainProviderSet = di.NewSet(
+	UserSet, // keep console domain
+)

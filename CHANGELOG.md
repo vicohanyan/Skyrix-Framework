@@ -14,6 +14,23 @@ compatibility layer for v0.2.x applications: services and modules built for
 v0.2.x must be migrated before upgrading. Modules released for v0.3.0 do not
 support v0.2.x.
 
+### Scaffolding generators
+
+- Complete standalone make domain/entity/repository/service/handler/command
+  [--db]/job/seeder/stubs commands adapted to Template's existing providers,
+  console graphs, job registry and seeder contracts. Preserve make migration.
+- Shared embedded templates with project overrides in stubs/skyrix, explicit
+  export conflicts, module imports from go.mod and documented nested domain names.
+- AST-directed registration preserves comments and user code, deduplicates new
+  imports/providers and rejects unsupported or ambiguous composition shapes.
+  Binary Wire sources and generated injectors remain explicitly user-managed.
+- Plan files before writing; reject path/symbol/file conflicts and symlinks.
+  Roll back failed writes with original contents/modes, including failed Atlas
+  hash changes. No infrastructure, working config or tool installation is needed.
+- Add golden/AST tests plus generation, explicit Wire and compilation of a full
+  Template fixture under another module path; verify lazy DB commands, job wiring,
+  project stubs, conflict handling, rollback and help without configuration.
+
 ### Requirements
 
 - Go 1.27 or newer.

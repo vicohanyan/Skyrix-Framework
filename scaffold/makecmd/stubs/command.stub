@@ -1,0 +1,17 @@
+package commands
+
+import (
+ "gitlab.com/skyrix-lib/framework/cobra/console"
+ "github.com/spf13/cobra"
+)
+
+// {{.Type}} describes metadata without building the application graph.
+func {{.Type}}(deps *console.Graph[*Deps]) *console.Command {
+ return &console.Command{
+  Use: {{printf "%q" .Use}}, Short: "Implement {{.Type}}", Args: cobra.NoArgs,
+  Run: console.With(deps,func(cmd *cobra.Command,args []string,deps *Deps) error {
+   // Add command behavior here. Dependencies are available only on execution.
+   return nil
+  }),
+ }
+}

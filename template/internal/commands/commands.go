@@ -10,6 +10,7 @@ import (
 	"gitlab.com/skyrix-lib/framework/logger"
 
 	"gitlab.com/skyrix-lib/framework/cobra/console"
+	"gitlab.com/skyrix-lib/framework/database/dbcmd"
 	"gitlab.com/skyrix-lib/template/internal/config"
 
 	"github.com/goforj/wire"
@@ -32,3 +33,8 @@ func All(deps *console.Graph[*Deps]) []*console.Command {
 
 // ProviderSet provides Deps for the application graph.
 var ProviderSet = wire.NewSet(wire.Struct(new(Deps), "*"))
+
+// DatabaseAll describes commands that share the existing lazy database graph.
+func DatabaseAll(deps *console.Graph[*dbcmd.Deps]) []*console.Command {
+	return []*console.Command{}
+}

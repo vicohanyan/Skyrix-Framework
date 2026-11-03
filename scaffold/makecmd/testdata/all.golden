@@ -1,0 +1,313 @@
+-- go.mod --
+module code.example.dev/finance/ledger/v2
+
+go 1.27
+
+-- internal/commands/commands.go --
+// User console descriptions.
+package commands
+
+import (
+	"gitlab.com/skyrix-lib/framework/cobra/console"
+	"gitlab.com/skyrix-lib/framework/database/dbcmd"
+)
+
+type Deps struct{}
+
+func Hello(deps *console.Graph[*Deps]) *console.Command { return &console.Command{Use: "hello"} }
+func All(app *console.Graph[*Deps]) []*console.Command {
+	return []*console.Command{Hello(app), /* keep command */
+		ReconcileAccounts(app),
+	}
+}
+func DatabaseAll(database *console.Graph[*dbcmd.Deps]) []*console.Command {
+	return []*console.Command{
+		ScanInvoices(database),
+	}
+}
+
+-- internal/commands/reconcileAccountsCommand.go --
+package commands
+
+import (
+	"github.com/spf13/cobra"
+	"gitlab.com/skyrix-lib/framework/cobra/console"
+)
+
+// ReconcileAccounts describes metadata without building the application graph.
+func ReconcileAccounts(deps *console.Graph[*Deps]) *console.Command {
+	return &console.Command{
+		Use: "reconcile-accounts", Short: "Implement ReconcileAccounts", Args: cobra.NoArgs,
+		Run: console.With(deps, func(cmd *cobra.Command, args []string, deps *Deps) error {
+			// Add command behavior here. Dependencies are available only on execution.
+			return nil
+		}),
+	}
+}
+
+-- internal/commands/scanInvoicesCommand.go --
+package commands
+
+import (
+	"github.com/spf13/cobra"
+	"gitlab.com/skyrix-lib/framework/cobra/console"
+	"gitlab.com/skyrix-lib/framework/database/dbcmd"
+)
+
+// ScanInvoices uses the existing database graph only when executed.
+func ScanInvoices(deps *console.Graph[*dbcmd.Deps]) *console.Command {
+	return &console.Command{
+		Use: "scan-invoices", Short: "Implement ScanInvoices", Args: cobra.NoArgs,
+		Run: console.With(deps, func(cmd *cobra.Command, args []string, deps *dbcmd.Deps) error {
+			// Use deps.DB, deps.Logger, deps.Models and deps.Seeders as required.
+			return nil
+		}),
+	}
+}
+
+-- internal/database/database.go --
+package database
+
+import salesorderflowEntity "code.example.dev/finance/ledger/v2/internal/domain/sales/orderflow/entity"
+
+import (
+	customSeeds "code.example.dev/finance/ledger/v2/internal/database/seeders"
+	"github.com/goforj/wire"
+	"gitlab.com/skyrix-lib/framework/database/dbcmd"
+)
+
+type UserModel struct{}
+
+// Models keeps explicit user registrations.
+func Models() dbcmd.Models {
+	return dbcmd.Models{&UserModel{}, /* user model */
+		&salesorderflowEntity.LineItem{},
+	}
+}
+func Seeders(user *customSeeds.UserSeeder /* comma, in a comment */, currencyCodes *customSeeds.CurrencyCodesSeeder, taxCodes *customSeeds.TaxCodesSeeder) dbcmd.Seeders {
+	return dbcmd.Seeders{user, /* user seeder */
+		currencyCodes,
+		taxCodes,
+	}
+}
+
+var ProviderSet = wire.NewSet(Models, Seeders, customSeeds.NewUserSeeder,
+	customSeeds.NewCurrencyCodesSeeder,
+	customSeeds.NewTaxCodesSeeder,
+)
+
+-- internal/database/seeders/currencyCodesSeeder.go --
+package seeders
+
+import (
+	"context"
+	"gitlab.com/skyrix-lib/framework/database/dbcmd"
+)
+
+type CurrencyCodesSeeder struct{}
+
+func NewCurrencyCodesSeeder() *CurrencyCodesSeeder { return &CurrencyCodesSeeder{} }
+
+// Seed must remain idempotent: it runs for db seed and db automigrate.
+func (*CurrencyCodesSeeder) Seed(ctx context.Context) error { return nil }
+
+var _ dbcmd.Seeder = (*CurrencyCodesSeeder)(nil)
+
+-- internal/database/seeders/taxCodesSeeder.go --
+package seeders
+
+import (
+	"context"
+	"gitlab.com/skyrix-lib/framework/database/dbcmd"
+)
+
+type TaxCodesSeeder struct{}
+
+func NewTaxCodesSeeder() *TaxCodesSeeder { return &TaxCodesSeeder{} }
+
+// Seed must remain idempotent: it runs for db seed and db automigrate.
+func (*TaxCodesSeeder) Seed(ctx context.Context) error { return nil }
+
+var _ dbcmd.Seeder = (*TaxCodesSeeder)(nil)
+
+-- internal/database/seeders/user.go --
+package seeders
+type UserSeeder struct{}
+func NewUserSeeder()*UserSeeder{return &UserSeeder{}}
+
+-- internal/domain/sales/orderflow/dto/doc.go --
+// Package dto contains OrderFlow domain components.
+package dto
+
+-- internal/domain/sales/orderflow/entity/doc.go --
+// Package entity contains OrderFlow domain components.
+package entity
+
+-- internal/domain/sales/orderflow/entity/lineItem.go --
+package entity
+
+// LineItem is a persistence model. Apply schema changes explicitly.
+type LineItem struct {
+	ID uint64 `gorm:"primaryKey;autoIncrement"`
+}
+
+func NewLineItem() *LineItem { return &LineItem{} }
+
+-- internal/domain/sales/orderflow/interfaces/doc.go --
+// Package interfaces contains OrderFlow domain components.
+package interfaces
+
+-- internal/domain/sales/orderflow/provider.go --
+// Package orderflow contains the OrderFlow domain.
+package orderflow
+
+import services "code.example.dev/finance/ledger/v2/internal/domain/sales/orderflow/services"
+
+import repository "code.example.dev/finance/ledger/v2/internal/domain/sales/orderflow/repository"
+
+import "github.com/goforj/wire"
+
+// ProviderSet contains this domain's constructors and interface bindings.
+var ProviderSet = wire.NewSet(
+	repository.NewLineItemRepository,
+	services.NewReconcileBatchService,
+)
+
+-- internal/domain/sales/orderflow/repository/doc.go --
+// Package repository contains OrderFlow domain components.
+package repository
+
+-- internal/domain/sales/orderflow/repository/lineItemRepository.go --
+package repository
+
+// LineItemRepository is a persistence adapter skeleton.
+// Add storage dependencies and a meaningful domain interface when needed.
+type LineItemRepository struct{}
+
+func NewLineItemRepository() *LineItemRepository { return &LineItemRepository{} }
+
+-- internal/domain/sales/orderflow/services/doc.go --
+// Package services contains OrderFlow domain components.
+package services
+
+-- internal/domain/sales/orderflow/services/reconcileBatchService.go --
+package services
+
+// ReconcileBatchService is an application service skeleton.
+// Add domain interface dependencies with the operations this service needs.
+type ReconcileBatchService struct{}
+
+func NewReconcileBatchService() *ReconcileBatchService { return &ReconcileBatchService{} }
+
+-- internal/domain/sales/orderflow/unitOfWork/doc.go --
+// Package unitofwork contains OrderFlow domain components.
+package unitofwork
+
+-- internal/handlers/salesOrderFlowInvoiceViewHandler.go --
+package handlers
+
+import (
+	httphandler "gitlab.com/skyrix-lib/framework/httpserver/handler"
+	"gitlab.com/skyrix-lib/framework/logger"
+	"gitlab.com/skyrix-lib/framework/validation"
+	"net/http"
+)
+
+type SalesOrderFlowInvoiceViewHandler struct{ *httphandler.BaseHandler }
+
+func NewSalesOrderFlowInvoiceViewHandler(log logger.Interface, validator *validation.Validator) *SalesOrderFlowInvoiceViewHandler {
+	h := &SalesOrderFlowInvoiceViewHandler{BaseHandler: &httphandler.BaseHandler{Logger: log, Validator: validator}}
+	h.BaseHandler.WithAutoName(h)
+	return h
+}
+
+// Handle is a placeholder; register a route explicitly after implementing it.
+func (h *SalesOrderFlowInvoiceViewHandler) Handle(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+-- internal/jobs/refreshBalancesJob.go --
+package jobs
+
+import (
+	"context"
+	enginejobs "gitlab.com/skyrix-lib/framework/engine/jobs"
+)
+
+type RefreshBalancesJob struct{}
+
+func NewRefreshBalancesJob() *RefreshBalancesJob                                   { return &RefreshBalancesJob{} }
+func (*RefreshBalancesJob) Name() string                                           { return "refresh.balances" }
+func (*RefreshBalancesJob) RetryCount() int                                        { return 0 }
+func (*RefreshBalancesJob) Execute(ctx context.Context, args map[string]any) error { return nil }
+
+var _ enginejobs.Job = (*RefreshBalancesJob)(nil)
+
+-- migrations/20261103102030_custom_trigger.sql --
+
+-- providers/domains.go --
+// User domain composition.
+package providers // package comment
+
+import salesorderflow "code.example.dev/finance/ledger/v2/internal/domain/sales/orderflow"
+
+import di "github.com/goforj/wire"
+
+// UserSet stays untouched.
+var UserSet = di.NewSet()
+var DomainProviderSet = di.NewSet(UserSet, /* keep domain */
+	salesorderflow.ProviderSet,
+)
+var ConsoleDomainProviderSet = di.NewSet(
+	UserSet, // keep console domain
+	salesorderflow.ProviderSet,
+)
+
+-- providers/handlers.go --
+package providers
+
+import handlers "code.example.dev/finance/ledger/v2/internal/handlers"
+
+import "github.com/goforj/wire"
+
+// Handlers retains user fields.
+type Handlers struct {
+	User                      *UserHandler /* user field */
+	SalesOrderFlowInvoiceView *handlers.SalesOrderFlowInvoiceViewHandler
+}
+type UserHandler struct{}
+
+func NewUserHandler() *UserHandler { return &UserHandler{} }
+
+var HandlerProviderSet = wire.NewSet(NewUserHandler, wire.Struct(new(Handlers), "*"),
+	handlers.NewSalesOrderFlowInvoiceViewHandler,
+)
+
+-- providers/jobs.go --
+package providers
+
+import (
+	customJobs "code.example.dev/finance/ledger/v2/internal/jobs"
+	"github.com/goforj/wire"
+	engineJobs "gitlab.com/skyrix-lib/framework/engine/jobs"
+)
+
+type Jobs struct {
+	UserJob            *customJobs.UserJob /* keep job */
+	RefreshBalancesJob *customJobs.RefreshBalancesJob
+}
+
+func ProvideRegisteredJobsRegistry(reg *engineJobs.RuntimeRegistry, all *Jobs) engineJobs.Registry {
+	// keep registry comment
+	reg.Register(all.UserJob) // user registration
+	reg.Register(all.RefreshBalancesJob)
+	return reg
+}
+
+var JobProviderSet = wire.NewSet(engineJobs.NewRegistry, customJobs.NewUserJob, wire.Struct(new(Jobs), "*"), ProvideRegisteredJobsRegistry,
+	customJobs.NewRefreshBalancesJob,
+)
+var ConsoleJobProviderSet = wire.NewSet(engineJobs.NewRegistry, customJobs.NewUserJob, wire.Struct(new(Jobs), "*"), ProvideRegisteredJobsRegistry,
+	customJobs.NewRefreshBalancesJob,
+)
+

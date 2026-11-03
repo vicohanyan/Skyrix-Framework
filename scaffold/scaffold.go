@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/format"
 	"go/token"
+	"golang.org/x/mod/modfile"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,13 +95,11 @@ func ModulePath(root string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("read go.mod: %w", err)
 	}
-	for _, line := range strings.Split(string(content), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 2 && fields[0] == "module" {
-			return fields[1], nil
-		}
+	path := modfile.ModulePath(content)
+	if path == "" {
+		return "", fmt.Errorf("go.mod does not declare a module path")
 	}
-	return "", fmt.Errorf("go.mod does not declare a module path")
+	return path, nil
 }
 
 // WriteNewFile formats Go source and creates a file without overwriting it.

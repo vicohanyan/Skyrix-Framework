@@ -1,0 +1,2 @@
+// Package {{.Package}} contains {{.Type}} domain components.
+package {{.Package}}

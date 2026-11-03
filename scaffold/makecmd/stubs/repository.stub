@@ -1,0 +1,7 @@
+package repository
+
+// {{.Type}}Repository is a persistence adapter skeleton.
+// Add storage dependencies and a meaningful domain interface when needed.
+type {{.Type}}Repository struct{}
+
+func New{{.Type}}Repository() *{{.Type}}Repository { return &{{.Type}}Repository{} }

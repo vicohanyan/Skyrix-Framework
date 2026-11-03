@@ -1,0 +1,18 @@
+package commands
+
+import (
+ "gitlab.com/skyrix-lib/framework/cobra/console"
+ "gitlab.com/skyrix-lib/framework/database/dbcmd"
+ "github.com/spf13/cobra"
+)
+
+// {{.Type}} uses the existing database graph only when executed.
+func {{.Type}}(deps *console.Graph[*dbcmd.Deps]) *console.Command {
+ return &console.Command{
+  Use: {{printf "%q" .Use}}, Short: "Implement {{.Type}}", Args: cobra.NoArgs,
+  Run: console.With(deps,func(cmd *cobra.Command,args []string,deps *dbcmd.Deps) error {
+   // Use deps.DB, deps.Logger, deps.Models and deps.Seeders as required.
+   return nil
+  }),
+ }
+}

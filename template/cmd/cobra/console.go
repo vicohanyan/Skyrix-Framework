@@ -52,6 +52,7 @@ func newConsole(g graphs) *console.Console {
 		Jobs:           console.Derive(g.App, func(a *appGraph) engineJobs.Registry { return a.Jobs }),
 	})...)
 	app.Add(commands.All(console.Derive(g.App, func(a *appGraph) *commands.Deps { return a.Commands }))...)
+	app.Add(commands.DatabaseAll(g.Database)...)
 	app.Add(providers.ProvideConsolePlatformCommands()...)
 	return app
 }

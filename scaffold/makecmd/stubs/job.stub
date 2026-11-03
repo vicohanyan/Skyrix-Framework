@@ -1,0 +1,13 @@
+package jobs
+
+import (
+ "context"
+ enginejobs "gitlab.com/skyrix-lib/framework/engine/jobs"
+)
+
+type {{.Type}}Job struct{}
+func New{{.Type}}Job() *{{.Type}}Job { return &{{.Type}}Job{} }
+func (*{{.Type}}Job) Name() string { return {{printf "%q" .JobName}} }
+func (*{{.Type}}Job) RetryCount() int { return 0 }
+func (*{{.Type}}Job) Execute(ctx context.Context,args map[string]any) error { return nil }
+var _ enginejobs.Job = (*{{.Type}}Job)(nil)

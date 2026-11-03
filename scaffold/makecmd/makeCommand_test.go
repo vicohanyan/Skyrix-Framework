@@ -15,61 +15,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestMakeCommandCreatesDomainRepositoryAndService(t *testing.T) {
-	root := newScaffoldProject(t)
-	command := &MakeCommand{ProjectRoot: root}
-
-	if _, err := executeScaffoldCommand(command.Command().Cobra(), "repository", "Payment"); err == nil {
-		t.Fatal("repository before domain error = nil, want error")
-	}
-
-	output, err := executeScaffoldCommand(command.Command().Cobra(), "domain", "Payment")
-	if err != nil {
-		t.Fatalf("make domain error = %v", err)
-	}
-	if output != "domain created: payment\n" {
-		t.Fatalf("make domain output = %q", output)
-	}
-	domain := command.domainDirectory(root, "payment")
-	for _, path := range []string{
-		"provider.go",
-		"dto/doc.go",
-		"entity/doc.go",
-		"interfaces/doc.go",
-		"repository/doc.go",
-		"services/doc.go",
-		"unitOfWork/doc.go",
-	} {
-		assertGoFileParses(t, filepath.Join(domain, path))
-	}
-
-	if _, err := executeScaffoldCommand(command.Command().Cobra(), "repository", "Payment"); err != nil {
-		t.Fatalf("make repository error = %v", err)
-	}
-	if _, err := executeScaffoldCommand(command.Command().Cobra(), "service", "Payment"); err != nil {
-		t.Fatalf("make service error = %v", err)
-	}
-	repositoryPath := filepath.Join(domain, "repository", "paymentRepository.go")
-	servicePath := filepath.Join(domain, "services", "paymentService.go")
-	assertGoFileParses(t, repositoryPath)
-	assertGoFileParses(t, servicePath)
-	if !strings.Contains(readTestFile(t, repositoryPath), "type PaymentRepository struct") {
-		t.Fatalf("repository does not use normalized type name")
-	}
-	if !strings.Contains(readTestFile(t, servicePath), "type PaymentService struct") {
-		t.Fatalf("service does not use normalized type name")
-	}
-
-	for _, args := range [][]string{{"domain", "Payment"}, {"repository", "Payment"}, {"service", "Payment"}} {
-		if _, err := executeScaffoldCommand(command.Command().Cobra(), args...); err == nil {
-			t.Fatalf("duplicate make %v error = nil, want error", args)
-		}
-	}
-	if _, err := os.Stat(repositoryPath); err != nil {
-		t.Fatalf("duplicate command removed repository: %v", err)
-	}
-}
-
 func TestNormalizeScaffoldName(t *testing.T) {
 	tests := []struct {
 		raw         string

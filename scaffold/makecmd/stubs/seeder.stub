@@ -1,0 +1,13 @@
+package seeders
+
+import (
+ "context"
+ "gitlab.com/skyrix-lib/framework/database/dbcmd"
+)
+
+type {{.Type}}Seeder struct{}
+func New{{.Type}}Seeder() *{{.Type}}Seeder { return &{{.Type}}Seeder{} }
+
+// Seed must remain idempotent: it runs for db seed and db automigrate.
+func (*{{.Type}}Seeder) Seed(ctx context.Context) error { return nil }
+var _ dbcmd.Seeder = (*{{.Type}}Seeder)(nil)
