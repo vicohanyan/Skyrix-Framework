@@ -4,6 +4,7 @@
 package corecmd
 
 import (
+	"github.com/spf13/cobra"
 	"gitlab.com/skyrix-lib/framework/cobra/configcmd"
 	"gitlab.com/skyrix-lib/framework/cobra/console"
 	"gitlab.com/skyrix-lib/framework/cobra/platformcmd"
@@ -23,11 +24,11 @@ type Options struct {
 	// Migrations are the standalone db migrate* commands; nil leaves them
 	// out of the db group.
 	Migrations *migratecmd.Commands
-	// Database is the database graph of db automigrate and db seed
-	// (console.NeedsDatabase).
+	// Database is the database graph of db seed
+	//.
 	Database *console.Graph[*dbcmd.Deps]
 	// Jobs is the job registry of jobs:run, usually derived from the
-	// application graph (console.NeedsApp).
+	// application graph.
 	Jobs *console.Graph[engineJobs.Registry]
 	// Make configures the standalone make commands; nil means
 	// makecmd.NewMakeCommand().
@@ -35,13 +36,13 @@ type Options struct {
 }
 
 // Commands describes the framework commands: the db group (migrate*,
-// automigrate, seed), jobs:run, make and config:env.
-func Commands(options Options) []*console.Command {
+// seed), jobs:run, make and config:env.
+func Commands(options Options) []*cobra.Command {
 	make := options.Make
 	if make == nil {
 		make = makecmd.NewMakeCommand()
 	}
-	return []*console.Command{
+	return []*cobra.Command{
 		dbcmd.Command(options.Migrations, options.Database),
 		jobscmd.Command(options.Jobs),
 		make.Command(),

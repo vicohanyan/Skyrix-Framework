@@ -3,9 +3,9 @@ package cobra
 import (
 	"testing"
 
-	"gitlab.com/skyrix-lib/framework/kernel"
+	spfcobra "github.com/spf13/cobra"
 
-	"gitlab.com/skyrix-lib/framework/cobra/console"
+	"gitlab.com/skyrix-lib/framework/kernel"
 )
 
 type componentsOnlyModule struct{ name string }
@@ -23,13 +23,13 @@ func (m commandModule) Commands() []CommandFactory { return m.factories }
 func TestModuleCommandsCollectsProvidersInOrder(t *testing.T) {
 	commands := ModuleCommands(
 		commandModule{componentsOnlyModule{"one"}, []CommandFactory{
-			func() *console.Command { return &console.Command{Use: "one"} },
+			func() *spfcobra.Command { return &spfcobra.Command{Use: "one"} },
 			nil,
-			func() *console.Command { return nil },
+			func() *spfcobra.Command { return nil },
 		}},
 		componentsOnlyModule{"no-commands"},
 		commandModule{componentsOnlyModule{"two"}, []CommandFactory{
-			func() *console.Command { return &console.Command{Use: "two"} },
+			func() *spfcobra.Command { return &spfcobra.Command{Use: "two"} },
 		}},
 	)
 	if len(commands) != 2 || commands[0].Use != "one" || commands[1].Use != "two" {

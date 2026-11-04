@@ -20,7 +20,7 @@ type DiffOptions struct {
 	Env    string
 	DevURL string
 	// Dir is the absolute migration directory Atlas reads and writes; empty
-	// means migrations/ under the project root. Generators pass a Workspace
+	// means database/migrations/ under the project root. Generators pass a Workspace
 	// copy so that Atlas never writes into the project directly.
 	Dir string
 }

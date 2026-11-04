@@ -11,47 +11,34 @@ import (
 	"gitlab.com/skyrix-lib/framework/database/migrate/migratecmd"
 )
 
-func TestDBGroupContainsMigrationAndDevelopmentCommands(t *testing.T) {
-	cmd := dbcmd.Command(migratecmd.New(nil, nil), console.Value(console.NeedsDatabase, &dbcmd.Deps{}))
+func TestDBGroupContainsMigrationAndSeedCommands(t *testing.T) {
+	cmd := dbcmd.Command(migratecmd.New(nil, nil), console.Value(&dbcmd.Deps{}))
 	if cmd.Name() != "db" {
 		t.Fatalf("group = %q, want db", cmd.Name())
 	}
-	want := map[string]console.Needs{
-		"migrate":          console.NeedsNothing,
-		"migrate:status":   console.NeedsNothing,
-		"migrate:baseline": console.NeedsNothing,
-		"migrate:hash":     console.NeedsNothing,
-		"migrate:diff":     console.NeedsNothing,
-		"automigrate":      console.NeedsDatabase,
-		"seed":             console.NeedsDatabase,
-	}
-	for name, needs := range want {
-		sub := cmd.Find(name)
-		if sub == nil {
-			t.Errorf("db %s is missing", name)
-			continue
-		}
-		if sub.Needs() != needs {
-			t.Errorf("db %s needs %v, want %v", name, sub.Needs(), needs)
+	want := []string{"migrate", "migrate:status", "migrate:baseline", "migrate:hash", "migrate:diff", "seed"}
+	for _, name := range want {
+		sub, _, err := cmd.Find([]string{name})
+		if err != nil || sub == cmd || sub.Name() != name {
+			t.Errorf("db %s is missing: %v", name, err)
 		}
 	}
-	if len(cmd.Commands) != len(want) {
-		t.Errorf("db has %d subcommands, want %d", len(cmd.Commands), len(want))
+	if len(cmd.Commands()) != len(want) {
+		t.Fatalf("subcommands: %d", len(cmd.Commands()))
 	}
 }
 
 // db seed builds the database graph when it runs and seeds through it.
 func TestSeedCommandGetsDepsWhenItRuns(t *testing.T) {
 	builds, seeds := 0, 0
-	deps := console.NewGraph(console.NeedsDatabase, func() (*dbcmd.Deps, func(), error) {
+	deps := console.NewGraph(func() (*dbcmd.Deps, func(), error) {
 		builds++
-		return dbcmd.NewDeps(nil, nil, nil, dbcmd.Seeders{
+		return dbcmd.NewDeps(nil, nil, dbcmd.Seeders{
 			dbcmd.SeederFunc(func(context.Context) error { seeds++; return nil }),
 		}), func() {}, nil
 	})
-	group := dbcmd.Command(nil, deps)
 	for _, args := range [][]string{{"--help"}, {"seed", "--help"}} {
-		root := group.Cobra()
+		root := dbcmd.Command(nil, deps)
 		root.SetArgs(args)
 		root.SetOut(&strings.Builder{})
 		if err := root.Execute(); err != nil {
@@ -61,7 +48,7 @@ func TestSeedCommandGetsDepsWhenItRuns(t *testing.T) {
 	if builds != 0 {
 		t.Fatalf("help built the database graph %d times", builds)
 	}
-	root := group.Cobra()
+	root := dbcmd.Command(nil, deps)
 	root.SetArgs([]string{"seed"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
@@ -80,17 +67,11 @@ func TestSeedRunsSeedersInOrderAndStopsOnError(t *testing.T) {
 		dbcmd.SeederFunc(func(context.Context) error { calls = append(calls, 2); return failure }),
 		dbcmd.SeederFunc(func(context.Context) error { calls = append(calls, 3); return nil }),
 	}
-	err := dbcmd.NewDeps(nil, nil, nil, seeders).Seed(context.Background())
+	err := dbcmd.NewDeps(nil, nil, seeders).Seed(context.Background())
 	if !errors.Is(err, failure) {
 		t.Fatalf("Seed() error = %v, want boom", err)
 	}
 	if len(calls) != 2 || calls[0] != 1 || calls[1] != 2 {
 		t.Fatalf("calls = %v, want [1 2]", calls)
-	}
-}
-
-func TestAutoMigrateWithoutDatabase(t *testing.T) {
-	if err := dbcmd.NewDeps(nil, nil, dbcmd.Models{struct{}{}}, nil).AutoMigrate(context.Background()); err == nil {
-		t.Fatal("AutoMigrate() without database error = nil")
 	}
 }

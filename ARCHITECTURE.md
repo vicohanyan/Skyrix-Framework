@@ -8,12 +8,12 @@ Items that are planned but not implemented are marked **planned**.
 | Module                            | Directory   | How a service uses it                                                        |
 |-----------------------------------|-------------|------------------------------------------------------------------------------|
 | `gitlab.com/skyrix-lib/framework` | `/`         | **Imported** (`go get`). Reusable kernel, engine, hosts and extensions.      |
-| `gitlab.com/skyrix-lib/template`  | `template/` | **Copied** into a new repository. The application scaffold that imports the framework. |
+| `gitlab.com/skyrix-lib/template`  | `../framework-template/` | **Copied** into a new repository. The application scaffold that imports the framework. |
 
 The framework never imports the template. The template owns everything that is
 specific to an application: configuration structure, Wire graphs, domains,
 routes, migrations, Compose and Dockerfiles. During development the template
-uses the framework through `replace gitlab.com/skyrix-lib/framework => ..`.
+uses the framework through an external local `go.work`.
 
 ## Layers
 
@@ -145,7 +145,7 @@ skip; recording-driver tests do not establish real PostgreSQL pool isolation.
 | `cobra/console`                          | Cobra console host: `Command` (a command described once: metadata, flags and a `Runner`), `Standalone`/`With` (runners without dependencies or with a lazily built `Graph`), `Needs` (`NeedsNothing`, `NeedsDatabase`, `NeedsApp`), `Graph` (`NewGraph` around a Wire injector, `Derive`, `Value`) and `Console` (`New`, `Add`, `AddCobra`, `Execute`). |
 | `cobra/corecmd`                          | Describes the framework commands: `db` (`database/dbcmd`), `jobs:run`, `make` (`Commands(Options)`).                                                                                                                       |
 | `database/migrate`                       | Forward-only SQL migration runner (see [Migrations](#migrations)), standard library only. `migratecmd` — the `db migrate*` commands; `atlas` — `atlas.sum` via the Atlas Go library and the optional Atlas CLI for `migrate:diff`.                                                       |
-| `database/dbcmd`                         | The `db` command group: the migration commands plus `db automigrate` (GORM AutoMigrate, development only) and `db seed`. The application supplies only `dbcmd.Models` and `dbcmd.Seeders`.                              |
+| `database/dbcmd`                         | The `db` command group: the migration commands plus `db seed`. The application supplies `dbcmd.Seeders`.                              |
 
 There is no worker host package: the template's `cmd/worker` is a
 `kernel.Runtime` of platform components (empty in the template: it starts,
@@ -289,7 +289,7 @@ binary's graph, to `/api/v1`; it knows nothing about the elements. The default
 `ProvideAPIMiddleware` returns only bearer-token authentication
 (`AuthVerifierSet`, token verification without Redis). `/health` and
 `/metrics` are outside the chain and stay open. Tenant resolution is not part
-of the default chain; see [template/README.md](template/README.md#tenants).
+of the default chain; see [Template README](../framework-template/README.md#tenants).
 
 Assembly order rule: from the root of the dependency graph to the leaves, both
 in `wire.Build` and in the runtime: engine infrastructure (config, logger,
@@ -300,7 +300,7 @@ runs without the infrastructure it uses.
 Every console command is described once, as a `console.Command`: metadata
 for help and completion, and a runner that gets its dependencies only when the
 command runs. The framework commands are described by `cobra/corecmd`, the
-application commands by `internal/commands.All`, and platform module commands
+application commands by `providers.ProvideConsoleCommands`, and platform module commands
 are added as explicitly selected Cobra commands (`ProvideConsolePlatformCommands`). The descriptions are cheap
 to build; the dependency graphs are Wire injectors wrapped in a
 `console.Graph` and called lazily, right before the command that needs them:
@@ -310,7 +310,7 @@ to build; the dependency graphs are Wire injectors wrapped in a
 2. standalone commands (`console.NeedsNothing`: `make`, `db migrate*`,
    platform commands) build no graph; `db migrate*` connect only to
    PostgreSQL when they run;
-3. `db automigrate` and `db seed` (`console.NeedsDatabase`) build only the
+3. `db seed` (`console.NeedsDatabase`) build only the
    database graph (`buildDatabase`);
 4. `jobs:run` and the application commands (`console.NeedsApp`) build the
    application graph (`buildApp`).
@@ -322,7 +322,7 @@ What a command needs follows from its runner (`console.Standalone` or
 
 - Forward-only SQL files in the Atlas directory format:
   `<YYYYMMDDHHMMSS>_<name>.sql`, or `.notx.sql` for statements that must run
-  outside a transaction. The application embeds its `migrations/` directory.
+  outside a transaction. The application embeds its `database/migrations/` directory.
 - `database/migrate.Runner` applies them through `database/sql` (no GORM):
   records each migration with a run number, checksum and application version
   in `skyrix_migrations` (configurable), refuses modified applied files
@@ -342,15 +342,13 @@ What a command needs follows from its runner (`console.Standalone` or
   credentials are not copied into the Atlas config. Model loader and migration
   paths follow project conventions; custom project HCL is ignored and preserved.
   `db migrate:diff`, `make migration` and `db migrate:hash` work on a private
-  copy of `migrations/` (`atlas.Workspace`): generators verify `atlas.sum` before
+  copy of `database/migrations/` (`atlas.Workspace`): generators verify `atlas.sum` before
   generating (missing or mismatching checksums are errors, never recomputed
   silently), then publish the new SQL files and `atlas.sum` together; no
   changes or an error leave the project untouched. `db migrate:hash`
   (`Workspace.Rehash`) replaces only `atlas.sum`, atomically, after the same
   concurrent-change check. Migrations are applied by
   `db migrate`, never by `atlas migrate apply`.
-- `db automigrate` (GORM AutoMigrate + seeders) is for development only and is
-  not recorded in `skyrix_migrations`.
 
 ## Dependency rules
 

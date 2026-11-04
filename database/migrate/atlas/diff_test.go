@@ -119,7 +119,7 @@ func TestDiffUsesTemporaryConfigAndCleansUp(t *testing.T) {
 			if entries, err := os.ReadDir(temporary); err != nil || len(entries) != 0 {
 				t.Fatal("temporary files remain")
 			}
-			for _, want := range []string{`working_dir = ` + hclString(root), `env "production"`, `dev = "postgres://user:secret@localhost/scratch?search_path=Scratch"`, hclString(fileURL(filepath.Join(root, "migrations"))), `program = ["go", "run", "./tools/schemaloader"]`} {
+			for _, want := range []string{`working_dir = ` + hclString(root), `env "production"`, `dev = "postgres://user:secret@localhost/scratch?search_path=Scratch"`, hclString(fileURL(filepath.Join(root, "database/migrations"))), `program = ["go", "run", "./tools/schemaloader"]`} {
 				if !strings.Contains(got.Config, want) {
 					t.Fatalf("missing %q in config:\n%s", want, got.Config)
 				}

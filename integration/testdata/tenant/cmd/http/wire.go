@@ -33,6 +33,7 @@ var httpGraph = wire.NewSet(
 	// 5. App layer
 	providers.HandlerProviderSet,
 	providers.GlobalMiddlewareProviderSet,
+	providers.AuthConfigSet,
 	providers.AuthVerifierSet,
 	providers.TenantSet,
 	// Middleware chain of /api/v1, in order: auth, then tenant.

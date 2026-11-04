@@ -11,24 +11,24 @@ import (
 	engineJobs "gitlab.com/skyrix-lib/framework/engine/jobs"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 // Command describes "jobs:run". The job registry comes from registry, built
 // only when the command runs; it usually derives from the application
-// graph (console.NeedsApp), since jobs need the application's services.
-func Command(registry *console.Graph[engineJobs.Registry]) *console.Command {
-	return &console.Command{
+// graph, since jobs need the application's services.
+func Command(registry *console.Graph[engineJobs.Registry]) *cobra.Command {
+	command := &cobra.Command{
 		Use:   "jobs:run",
 		Short: "Run a registered job synchronously",
-		Flags: func(flags *pflag.FlagSet) {
-			flags.String("name", "", "Registered job name")
-			flags.String("args-json", "", "JSON object with job arguments")
-			flags.Int("limit", 0, "Job limit argument")
-			flags.Int("max-attempts", 0, "Job max_attempts argument")
-		},
-		Run: console.With(registry, run),
+		RunE:  console.With(registry, run),
 	}
+
+	command.Flags().String("name", "", "Registered job name")
+	command.Flags().String("args-json", "", "JSON object with job arguments")
+	command.Flags().Int("limit", 0, "Job limit argument")
+	command.Flags().Int("max-attempts", 0, "Job max_attempts argument")
+
+	return command
 }
 
 func run(cmd *cobra.Command, _ []string, registry engineJobs.Registry) error {

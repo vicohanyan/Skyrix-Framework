@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -86,36 +85,36 @@ func ProvideRegisteredJobsRegistry(reg *engineJobs.RuntimeRegistry, all *Jobs) e
 var JobProviderSet=wire.NewSet(engineJobs.NewRegistry,customJobs.NewUserJob,wire.Struct(new(Jobs),"*"),ProvideRegisteredJobsRegistry)
 var ConsoleJobProviderSet=wire.NewSet(engineJobs.NewRegistry,customJobs.NewUserJob,wire.Struct(new(Jobs),"*"),ProvideRegisteredJobsRegistry)
 `,
-		"internal/commands/commands.go": `// User console descriptions.
-package commands
+		"providers/commands.go": `// User console commands.
+package providers
 import (
+ "github.com/spf13/cobra"
+ "` + fixtureModule + `/internal/config"
+ "gitlab.com/skyrix-lib/framework/logger"
  "gitlab.com/skyrix-lib/framework/cobra/console"
  "gitlab.com/skyrix-lib/framework/database/dbcmd"
 )
-type Deps struct{}
-func Hello(deps *console.Graph[*Deps])*console.Command{return &console.Command{Use:"hello"}}
-func All(app *console.Graph[*Deps]) []*console.Command {
- return []*console.Command{Hello(app) /* keep command */}
+type CommandDeps struct{Config *config.Config; Logger logger.Interface}
+func Hello(deps *console.Graph[*CommandDeps])*cobra.Command{return &cobra.Command{Use:"hello"}}
+func ProvideConsoleCommands(app *console.Graph[*CommandDeps]) []*cobra.Command {
+ return []*cobra.Command{Hello(app) /* keep command */}
 }
-func DatabaseAll(database *console.Graph[*dbcmd.Deps]) []*console.Command {
- return []*console.Command{}
+func ProvideConsoleDatabaseCommands(database *console.Graph[*dbcmd.Deps]) []*cobra.Command {
+ return []*cobra.Command{}
 }
 `,
-		"internal/database/database.go": `package database
+		"providers/database.go": `package providers
 import (
  "github.com/goforj/wire"
  "gitlab.com/skyrix-lib/framework/database/dbcmd"
- customSeeds "` + fixtureModule + `/internal/database/seeders"
+ customSeeds "` + fixtureModule + `/database/seeders"
 )
-type UserModel struct{}
-// Models keeps explicit user registrations.
-func Models() dbcmd.Models {return dbcmd.Models{&UserModel{} /* user model */}}
 func Seeders(user *customSeeds.UserSeeder /* comma, in a comment */) dbcmd.Seeders {
  return dbcmd.Seeders{user /* user seeder */}
 }
-var ProviderSet=wire.NewSet(Models,Seeders,customSeeds.NewUserSeeder)
+var DatabaseProviderSet=wire.NewSet(Seeders,customSeeds.NewUserSeeder)
 `,
-		"internal/database/seeders/user.go": "package seeders\ntype UserSeeder struct{}\nfunc NewUserSeeder()*UserSeeder{return &UserSeeder{}}\n",
+		"database/seeders/user.go": "package seeders\ntype UserSeeder struct{}\nfunc NewUserSeeder()*UserSeeder{return &UserSeeder{}}\n",
 	}
 	for name, source := range files {
 		writeProject(t, root, name, source)
@@ -180,18 +179,18 @@ func TestAllGeneratorsGolden(t *testing.T) {
 	root := registrationProject(t)
 	maker := testMaker(root)
 	for _, args := range allActions {
-		if _, err := executeScaffoldCommand(maker.Command().Cobra(), args...); err != nil {
+		if _, err := executeScaffoldCommand(maker.Command(), args...); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
 	}
 	snapshot := projectSnapshot(t, root)
 	paths := make([]string, 0, len(snapshot))
 	// atlas.sum is pinned by the atlas package tests, not by the golden file.
-	if sum := snapshot["migrations/atlas.sum"]; !strings.Contains(sum, "\n20261103102030_custom_trigger.sql h1:") {
+	if sum := snapshot["database/migrations/atlas.sum"]; !strings.Contains(sum, "\n20261103102030_custom_trigger.sql h1:") {
 		t.Fatalf("make migration did not write atlas.sum: %q", sum)
 	}
 	for path := range snapshot {
-		if !strings.HasPrefix(path, "stubs/") && path != "migrations/atlas.sum" {
+		if !strings.HasPrefix(path, "stubs/") && path != "database/migrations/atlas.sum" {
 			paths = append(paths, path)
 		}
 	}
@@ -203,7 +202,7 @@ func TestAllGeneratorsGolden(t *testing.T) {
 	golden(t, "all", result.String())
 	// A second operation conflicts without touching any existing or generated file.
 	for _, args := range allActions {
-		if _, err := executeScaffoldCommand(maker.Command().Cobra(), args...); err == nil {
+		if _, err := executeScaffoldCommand(maker.Command(), args...); err == nil {
 			t.Fatalf("repeat accepted %v", args)
 		}
 		assertUnchanged(t, root, snapshot)
@@ -214,11 +213,10 @@ func TestUnsupportedRegistrationIsAtomic(t *testing.T) {
 		{"domain", "billing", "providers/domains.go", "package providers\nvar DomainProviderSet = custom()\n"},
 		{"uow", "sales/create", "internal/domain/sales/provider.go", "package sales\nvar ProviderSet = custom()\n"},
 		{"service", "sales/reconcile", "internal/domain/sales/provider.go", "package sales\nvar ProviderSet = custom()\n"},
-		{"entity", "sales/invoice", "internal/database/database.go", "package database\nfunc Models() any {if true{return nil};return nil}\n"},
 		{"handler", "sales/view", "providers/handlers.go", "package providers\ntype Handlers = map[string]any\n"},
-		{"command", "sync", "internal/commands/commands.go", "package commands\nfunc All(){ println(1) }\n"},
+		{"command", "sync", "providers/commands.go", "package providers\nfunc ProvideConsoleCommands(){ println(1) }\n"},
 		{"job", "refresh", "providers/jobs.go", "package providers\nfunc ProvideRegisteredJobsRegistry(){if true{return}}\n"},
-		{"seeder", "currencies", "internal/database/database.go", "package database\nfunc Seeders() any {return custom()}\n"},
+		{"seeder", "currencies", "providers/database.go", "package providers\nfunc Seeders() any {return custom()}\n"},
 	} {
 		t.Run(test.kind, func(t *testing.T) {
 			root := registrationProject(t)
@@ -269,7 +267,7 @@ func New{{.Type}}Service()*{{.Type}}Service{return &{{.Type}}Service{Project:tru
 		t.Fatal("overwrote project stubs")
 	}
 	assertUnchanged(t, root, before)
-	for _, source := range []string{"{{.Unknown}}", "package wrong {", "package services\ntype Unrelated struct{}"} {
+	for _, source := range []string{"{{.Unknown}}", "package wrong {"} {
 		writeProject(t, root, "stubs/skyrix/service.stub", source)
 		before = projectSnapshot(t, root)
 		if _, err := maker.generate("service", "sales/fail", false); err == nil {
@@ -370,125 +368,6 @@ func TestMakeHelpNeedsNoProject(t *testing.T) {
 	}
 }
 
-// Build actual Template sources after generation under another module path.
-// Wire is the tool already declared by Template; this test installs nothing.
-func TestGeneratedTemplateBuildsAndWire(t *testing.T) {
-	root, framework := copyTemplate(t)
-	maker := testMaker(root)
-	for _, args := range allActions {
-		if _, err := executeScaffoldCommand(maker.Command().Cobra(), args...); err != nil {
-			t.Fatalf("%v: %v", args, err)
-		}
-	}
-	run := func(name string, args ...string) string {
-		t.Helper()
-		cmd := exec.Command(name, args...)
-		cmd.Dir = root
-		cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=readonly -buildvcs=false")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("%s %v: %v\n%s", name, args, err, out)
-		}
-		return string(out)
-	}
-	// Wire graphs and generated injectors must stay unchanged until explicit Wire.
-	original := readTestFile(t, filepath.Join(framework, "template/cmd/cobra/wire.go"))
-	got := readTestFile(t, filepath.Join(root, "cmd/cobra/wire.go"))
-	if got != strings.ReplaceAll(original, "gitlab.com/skyrix-lib/template", fixtureModule) {
-		t.Fatal("generator edited Wire source")
-	}
-	tool := strings.TrimSpace(run("go", "tool", "-n", "wire"))
-	run(tool, "gen", "./cmd/http", "./cmd/cobra", "./cmd/worker")
-	before := map[string]string{}
-	for _, name := range []string{"http", "cobra", "worker"} {
-		path := "cmd/" + name + "/wire_gen.go"
-		before[path] = readTestFile(t, filepath.Join(root, path))
-	}
-	run(tool, "gen", "./cmd/http", "./cmd/cobra", "./cmd/worker")
-	for path, want := range before {
-		if readTestFile(t, filepath.Join(root, path)) != want {
-			t.Fatalf("Wire not repeatable: %s", path)
-		}
-	}
-	run("go", "build", "./...")
-	writeProject(t, root, "internal/commands/generated_test.go", `package commands
-import (
- "context"
- "io"
- "testing"
- "gitlab.com/skyrix-lib/framework/cobra/console"
- "gitlab.com/skyrix-lib/framework/database/dbcmd"
-)
-func TestGeneratedCommandsAreLazy(t *testing.T){
- builds,closes:=0,0
- appGraph:=console.NewGraph(console.NeedsApp,func()(*Deps,func(),error){builds++;return &Deps{},func(){closes++},nil})
- dbGraph:=console.NewGraph(console.NeedsDatabase,func()(*dbcmd.Deps,func(),error){builds++;return &dbcmd.Deps{},func(){closes++},nil})
- for _,args:=range [][]string{{"--help"},{"scan-invoices","--help"},{"completion","bash"},{"__complete","scan-invoices",""}}{
-  app:=console.New(ReconcileAccounts(appGraph),ScanInvoices(dbGraph))
-  if err:=app.Execute(context.Background(),args,io.Discard,io.Discard);err!=nil{t.Fatal(err)}
-  if builds!=0{t.Fatal("help/completion built graph")}
- }
- app:=console.New(ReconcileAccounts(appGraph),ScanInvoices(dbGraph))
- if err:=app.Execute(context.Background(),[]string{"scan-invoices"},io.Discard,io.Discard);err!=nil{t.Fatal(err)}
- if builds!=1||appGraph.Built()||!dbGraph.Built(){t.Fatal("wrong graph selected")}
- dbGraph.Close();appGraph.Close();if closes!=1{t.Fatal("cleanup not called")}
-}
-`)
-	run("go", "test", "-count=1", "./internal/commands", "./internal/database/...", "./internal/jobs", "./internal/handlers", "./internal/domain/sales/...")
-	binary := filepath.Join(root, "console")
-	run("go", "build", "-o", binary, "./cmd/cobra")
-	jobCmd := exec.Command(binary, "jobs:run", "--name", "refresh.balances")
-	jobCmd.Dir = root
-	jobCmd.Env = append(os.Environ(), "DB_PORT=invalid", "REDIS_PORT=invalid", "JWT_EXPIRE=invalid", "LOG_OUTPUT=stdout")
-	if out, err := jobCmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "job succeeded") {
-		t.Fatalf("generated job not wired: %v\n%s", err, out)
-	}
-
-	for _, args := range [][]string{{"--help"}, {"scan-invoices", "--help"}, {"reconcile-accounts", "--help"}, {"completion", "bash"}, {"__complete", "scan-invoices", ""}, {"make", "job", "--help"}} {
-		cmd := exec.Command(binary, args...)
-		cmd.Dir = root
-		cmd.Env = append(os.Environ(), "JWT_EXPIRE=invalid", "DB_PORT=invalid", "REDIS_PORT=invalid", "LOG_OUTPUT=invalid")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("generated help %v: %v\n%s", args, err, out)
-		}
-	}
-}
-func copyTemplate(t *testing.T) (string, string) {
-	t.Helper()
-	framework, err := filepath.Abs("../..")
-	if err != nil {
-		t.Fatal(err)
-	}
-	source := filepath.Join(framework, "template")
-	root := t.TempDir()
-	err = filepath.WalkDir(source, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		relative, _ := filepath.Rel(source, path)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if strings.HasSuffix(path, ".go") || relative == "go.mod" {
-			data = []byte(strings.ReplaceAll(string(data), "gitlab.com/skyrix-lib/template", fixtureModule))
-		}
-		if relative == "go.mod" {
-			data = []byte(strings.ReplaceAll(string(data), "replace gitlab.com/skyrix-lib/framework => ..", "replace gitlab.com/skyrix-lib/framework => "+framework))
-			data = []byte(strings.ReplaceAll(string(data), "replace gitlab.com/skyrix-lib/auth => ../../skyrix-auth-lib", "replace gitlab.com/skyrix-lib/auth => "+filepath.Join(framework, "..", "skyrix-auth-lib")))
-		}
-		writeProject(t, root, relative, string(data))
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return root, framework
-}
-
 func TestASTRegistrationIsIdempotent(t *testing.T) {
 	root := registrationProject(t)
 	op, err := newOperation(root)
@@ -524,10 +403,10 @@ func TestASTRegistrationIsIdempotent(t *testing.T) {
 func TestMigrationChecksumFailureRollsBack(t *testing.T) {
 	root := registrationProject(t)
 	maker := testMaker(root)
-	writeProject(t, root, "migrations/20261101000000_user.sql", "SELECT 1;\n")
-	writeProject(t, root, "migrations/atlas.sum", "user checksum\n")
+	writeProject(t, root, "database/migrations/20261101000000_user.sql", "SELECT 1;\n")
+	writeProject(t, root, "database/migrations/atlas.sum", "user checksum\n")
 	before := projectSnapshot(t, root)
-	if _, err := executeScaffoldCommand(maker.Command().Cobra(), "migration", "test_hash"); err == nil {
+	if _, err := executeScaffoldCommand(maker.Command(), "migration", "test_hash"); err == nil {
 		t.Fatal("checksum mismatch ignored")
 	}
 	assertUnchanged(t, root, before)
@@ -540,5 +419,27 @@ func TestQuotedModulePath(t *testing.T) {
 	}
 	if source := readTestFile(t, filepath.Join(root, "providers/domains.go")); !strings.Contains(source, fixtureModule+"/internal/domain/billing") {
 		t.Fatal(source)
+	}
+}
+
+// Scaffolding edits registrations; Wire validates provider symbols and bundles.
+func TestWireValidatesGeneratedRegistrations(t *testing.T) {
+	root := registrationProject(t)
+	maker := testMaker(root)
+	if _, err := maker.generate("domain", "sales", false); err != nil {
+		t.Fatal(err)
+	}
+	writeProject(t, root, "stubs/skyrix/service.stub", "package services\ntype Custom struct{}\n")
+	if _, err := maker.generate("service", "sales/custom", false); err != nil {
+		t.Fatalf("generator validated Wire provider: %v", err)
+	}
+	handlers := readTestFile(t, filepath.Join(root, "providers/handlers.go"))
+	writeProject(t, root, "providers/handlers.go", strings.Replace(handlers, `,wire.Struct(new(Handlers),"*")`, "", 1))
+	if _, err := maker.generate("handler", "sales/view", false); err != nil {
+		t.Fatalf("generator validated Wire bundle: %v", err)
+	}
+	provider := readTestFile(t, filepath.Join(root, "internal/domain/sales/provider.go"))
+	if !strings.Contains(provider, "services.NewCustomService") {
+		t.Fatal("provider registration missing")
 	}
 }

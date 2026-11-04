@@ -243,37 +243,10 @@ func (e *editor) literalFunction(name string) (*ast.FuncDecl, *ast.CompositeLit,
 	}
 	return f, lit, nil
 }
-func (e *editor) addLiteral(name, text, kind string) error {
-	f, lit, err := e.literalFunction(name)
+func (e *editor) addLiteral(name, text string) error {
+	_, lit, err := e.literalFunction(name)
 	if err != nil {
 		return err
-	}
-	switch kind {
-	case "models", "seeders":
-		typeName := "Models"
-		if kind == "seeders" {
-			typeName = "Seeders"
-		}
-		if !e.isSelector(lit.Type, "gitlab.com/skyrix-lib/framework/database/dbcmd", typeName) {
-			return fmt.Errorf("%s must return dbcmd.%s{}", name, typeName)
-		}
-		if f.Type.Results == nil || len(f.Type.Results.List) != 1 || !e.isSelector(f.Type.Results.List[0].Type, "gitlab.com/skyrix-lib/framework/database/dbcmd", typeName) {
-			return fmt.Errorf("unsupported %s return type", name)
-		}
-	case "commands":
-		array, ok := lit.Type.(*ast.ArrayType)
-		if !ok || array.Len != nil {
-			return fmt.Errorf("%s must return []*console.Command{}", name)
-		}
-		star, ok := array.Elt.(*ast.StarExpr)
-		if !ok || !e.isSelector(star.X, "gitlab.com/skyrix-lib/framework/cobra/console", "Command") {
-			return fmt.Errorf("%s must return []*console.Command{}", name)
-		}
-	}
-	for _, item := range lit.Elts {
-		if _, keyed := item.(*ast.KeyValueExpr); keyed {
-			return fmt.Errorf("%s keyed registry entries are unsupported", name)
-		}
 	}
 	expr, err := expression(text)
 	if err != nil {
@@ -281,7 +254,7 @@ func (e *editor) addLiteral(name, text, kind string) error {
 	}
 	return e.appendList(lit.Rbrace, lit.Elts, expr)
 }
-func (e *editor) commandParam(name string, db bool) (string, error) {
+func (e *editor) commandParam(name string) (string, error) {
 	f, _, err := e.literalFunction(name)
 	if err != nil {
 		return "", err
@@ -290,25 +263,6 @@ func (e *editor) commandParam(name string, db bool) (string, error) {
 		return "", fmt.Errorf("%s requires one named graph parameter", name)
 	}
 	field := f.Type.Params.List[0]
-	star, ok := field.Type.(*ast.StarExpr)
-	if !ok {
-		return "", fmt.Errorf("%s requires *console.Graph", name)
-	}
-	index, ok := star.X.(*ast.IndexExpr)
-	if !ok || !e.isSelector(index.X, "gitlab.com/skyrix-lib/framework/cobra/console", "Graph") {
-		return "", fmt.Errorf("%s requires *console.Graph", name)
-	}
-	target, ok := index.Index.(*ast.StarExpr)
-	if !ok {
-		return "", fmt.Errorf("unsupported %s graph target", name)
-	}
-	if db {
-		if !e.isSelector(target.X, "gitlab.com/skyrix-lib/framework/database/dbcmd", "Deps") {
-			return "", fmt.Errorf("%s requires database graph", name)
-		}
-	} else if id, ok := target.X.(*ast.Ident); !ok || id.Name != "Deps" {
-		return "", fmt.Errorf("%s requires application Deps", name)
-	}
 	return field.Names[0].Name, nil
 }
 func (e *editor) addField(structName, fieldName, typeText string) error {
@@ -389,7 +343,7 @@ func (e *editor) addSeeder(name, typeText string) error {
 	if err := e.insert(f.Type.Params.Closing, payload); err != nil {
 		return err
 	}
-	return e.addLiteral("Seeders", name, "seeders")
+	return e.addLiteral("Seeders", name)
 }
 func (e *editor) addJobRegistration(field string) error {
 	f, err := e.function("ProvideRegisteredJobsRegistry")
@@ -398,14 +352,6 @@ func (e *editor) addJobRegistration(field string) error {
 	}
 	if len(f.Type.Params.List) != 2 || len(f.Type.Params.List[0].Names) != 1 || len(f.Type.Params.List[1].Names) != 1 {
 		return fmt.Errorf("unsupported jobs registry signature")
-	}
-	regType, ok := f.Type.Params.List[0].Type.(*ast.StarExpr)
-	if !ok || !e.isSelector(regType.X, "gitlab.com/skyrix-lib/framework/engine/jobs", "RuntimeRegistry") {
-		return fmt.Errorf("jobs registry requires *jobs.RuntimeRegistry")
-	}
-	allType, ok := f.Type.Params.List[1].Type.(*ast.StarExpr)
-	if !ok || printed(allType.X) != "Jobs" {
-		return fmt.Errorf("jobs registry requires *Jobs bundle")
 	}
 	reg, all := f.Type.Params.List[0].Names[0].Name, f.Type.Params.List[1].Names[0].Name
 	if len(f.Body.List) == 0 {
@@ -436,31 +382,32 @@ func (e *editor) addJobRegistration(field string) error {
 	return e.insert(last.Pos(), printed(&ast.ExprStmt{X: call})+"\n")
 }
 
-func (e *editor) requireBundle(setName, typeName string) error {
-	set, err := e.set(setName)
+// addCommand binds the command behavior to the selected lazy graph in providers.
+func (e *editor) addCommand(module, list, name string, db bool) error {
+	graph, err := e.commandParam(list)
 	if err != nil {
 		return err
 	}
-	matches := 0
-	for _, arg := range set.Args {
-		call, ok := arg.(*ast.CallExpr)
-		if !ok || !e.isSelector(call.Fun, "github.com/goforj/wire", "Struct") {
-			continue
-		}
-		if len(call.Args) != 2 || printed(call.Args[0]) != "new("+typeName+")" {
-			continue
-		}
-		value, ok := call.Args[1].(*ast.BasicLit)
-		if !ok {
-			continue
-		}
-		text, _ := strconv.Unquote(value.Value)
-		if text == "*" {
-			matches++
-		}
+	commands, err := e.importName(module+"/internal/commands", "commands")
+	if err != nil {
+		return err
 	}
-	if matches != 1 {
-		return fmt.Errorf("%s must contain one wire.Struct(new(%s), \"*\") bundle", setName, typeName)
+	console, err := e.importName("gitlab.com/skyrix-lib/framework/cobra/console", "console")
+	if err != nil {
+		return err
 	}
-	return nil
+	cobra, err := e.importName("github.com/spf13/cobra", "cobra")
+	if err != nil {
+		return err
+	}
+	depsType, args := "CommandDeps", "deps.Config, deps.Logger"
+	if db {
+		dbcmd, err := e.importName("gitlab.com/skyrix-lib/framework/database/dbcmd", "dbcmd")
+		if err != nil {
+			return err
+		}
+		depsType, args = dbcmd+".Deps", "deps"
+	}
+	text := fmt.Sprintf("%s.%s(%s.With(%s, func(cmd *%s.Command, args []string, deps *%s) error { return %s.Run%s(cmd, args, %s) }))", commands, name, console, graph, cobra, depsType, commands, name, args)
+	return e.addLiteral(list, text)
 }

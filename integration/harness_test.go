@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -36,7 +37,7 @@ func projectLayout(t *testing.T) layout {
 	framework := filepath.Dir(here)
 	l := layout{
 		framework: framework,
-		template:  filepath.Join(framework, "template"),
+		template:  libraryDir("SKYRIX_TEMPLATE_DIR", filepath.Join(filepath.Dir(framework), "framework-template")),
 		fixtures:  filepath.Join(here, "testdata"),
 		authLib:   libraryDir("SKYRIX_AUTH_LIB", filepath.Join(filepath.Dir(framework), "skyrix-auth-lib")),
 		tenantLib: libraryDir("SKYRIX_TENANT_LIB", filepath.Join(filepath.Dir(framework), "skyrix-tenant-lib")),
@@ -133,4 +134,34 @@ func goCommand(t *testing.T, dir string, env []string, name string, args ...stri
 		t.Fatalf("%s %v: %v\n%s", name, args, err, output)
 	}
 	return string(output)
+}
+
+// workspaceEnv resolves local modules outside the copied project. It never edits
+// the application's go.mod or uses the historical framework/template tree.
+func workspaceEnv(t *testing.T, l layout, project string, tenant bool) []string {
+	t.Helper()
+	modules := []string{l.framework, project, l.authLib}
+	if tenant {
+		modules = append(modules, l.tenantLib)
+	}
+	var work strings.Builder
+	work.WriteString("go 1.27\n\nuse (\n")
+	for _, module := range modules {
+		work.WriteString("\t" + strconv.Quote(module) + "\n")
+	}
+	work.WriteString(")\n")
+	for _, replacement := range []struct{ module, dir string }{
+		{"gitlab.com/skyrix-lib/framework", l.framework},
+		{"gitlab.com/skyrix-lib/auth", l.authLib},
+	} {
+		work.WriteString("replace " + replacement.module + " v0.0.0 => " + strconv.Quote(replacement.dir) + "\n")
+	}
+	if tenant {
+		work.WriteString("replace gitlab.com/skyrix-lib/tenant v0.0.0 => " + strconv.Quote(l.tenantLib) + "\n")
+	}
+	file := filepath.Join(t.TempDir(), "go.work")
+	if err := os.WriteFile(file, []byte(work.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return append(os.Environ(), "GOWORK="+file, "GOFLAGS=-mod=readonly -buildvcs=false", "GOPROXY=off", "GOSUMDB=off", "SKYRIX_TEST_POSTGRES_DSN=", "SKYRIX_TEST_REDIS_ADDR=")
 }

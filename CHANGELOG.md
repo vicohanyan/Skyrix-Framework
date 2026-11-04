@@ -14,6 +14,27 @@ compatibility layer for v0.2.x applications: services and modules built for
 v0.2.x must be migrated before upgrading. Modules released for v0.3.0 do not
 support v0.2.x.
 
+
+### Separate Template and explicit provider composition
+
+- Use the separate `framework-template` repository in the integration harness and
+  external local workspaces; the historical embedded template is removed.
+- Register application/DB commands in `providers/commands.go` through AST, with
+  lazy runners. Ordinary commands do not build database dependencies; help and
+  completion build neither graph. Update command and DB-command project stubs to
+  the `console.Runner` factory and `Run<Type>` handler contract.
+- Generate seeders in `database/seeders`; register constructors in
+  `providers.DatabaseProviderSet` and instances in `providers.Seeders`.
+- Use `database/migrations` for SQL, embed.go, and atlas.sum in `make migration`,
+  `db migrate:diff`, `db migrate:hash` and the embedded migration source.
+- Remove `db automigrate`, `dbcmd.Models` and AutoMigrate model registration.
+  Keep `db seed`, SQL migration execution and optional Atlas diff. Entity
+  generation does not select models for Atlas: edit tools/schemaloader explicitly.
+- Keep JobProviderSet and ConsoleJobProviderSet separate. Regenerate Wire
+  explicitly after provider/dependency changes; generators never edit injectors.
+- Cover generated registrations, seeder execution, help/completion laziness,
+  cleanup failures, preserved user files and atomic rejection in integration.
+
 ### Atlas is optional: hand-written SQL migrations without the Atlas CLI
 
 - `make migration` no longer needs the Atlas CLI, an Atlas account or a

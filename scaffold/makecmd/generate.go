@@ -2,8 +2,6 @@ package makecmd
 
 import (
 	"fmt"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -127,20 +125,10 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 	if selected.domain == "" {
 		data.DomainImport = ""
 	}
-	create := func(stub, path string, required ...string) error {
+	create := func(stub, path string) error {
 		content, err := renderStub(op, stub, data, true)
 		if err != nil {
 			return err
-		}
-		file, err := parser.ParseFile(token.NewFileSet(), path, content, parser.ParseComments)
-		if err != nil {
-			return err
-		}
-		names := topNames(file)
-		for _, symbol := range required {
-			if !names[symbol] {
-				return fmt.Errorf("stub %s must declare %s", stub, symbol)
-			}
 		}
 		return op.create(path, content)
 	}
@@ -155,7 +143,7 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 		} else if !os.IsNotExist(err) {
 			return "", err
 		}
-		if err := create("domain", filepath.Join(domainPath, "provider.go"), "ProviderSet"); err != nil {
+		if err := create("domain", filepath.Join(domainPath, "provider.go")); err != nil {
 			return "", err
 		}
 		for _, sub := range []string{"dto", "entity", "interfaces", "repository", "services", "unitOfWork"} {
@@ -186,7 +174,7 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 		if kind == "uow" {
 			sub, suffix = "unitOfWork", "UOW"
 		}
-		if err := create(kind, filepath.Join(domainPath, sub, data.Var+suffix+".go"), data.Type+suffix, "New"+data.Type+suffix); err != nil {
+		if err := create(kind, filepath.Join(domainPath, sub, data.Var+suffix+".go")); err != nil {
 			return "", err
 		}
 		if err := op.edit(filepath.Join(domainPath, "provider.go"), func(e *editor) error {
@@ -199,28 +187,16 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 			return "", err
 		}
 	case "entity":
-		if err := create(kind, filepath.Join(domainPath, "entity", data.Var+".go"), data.Type, "New"+data.Type); err != nil {
-			return "", err
-		}
-		if err := op.edit("internal/database/database.go", func(e *editor) error {
-			alias, err := e.importName(domainImport+"/entity", strings.ToLower(selected.domainType)+"Entity")
-			if err != nil {
-				return err
-			}
-			return e.addLiteral("Models", "&"+alias+"."+data.Type+"{}", "models")
-		}); err != nil {
+		if err := create(kind, filepath.Join(domainPath, "entity", data.Var+".go")); err != nil {
 			return "", err
 		}
 	case "handler":
 		data.Type = selected.domainType + data.Type
 		data.Var = lowerFirst(data.Type)
-		if err := create(kind, filepath.Join("internal/handlers", data.Var+"Handler.go"), data.Type+"Handler", "New"+data.Type+"Handler"); err != nil {
+		if err := create(kind, filepath.Join("internal/handlers", data.Var+"Handler.go")); err != nil {
 			return "", err
 		}
 		if err := op.edit("providers/handlers.go", func(e *editor) error {
-			if err := e.requireBundle("HandlerProviderSet", "Handlers"); err != nil {
-				return err
-			}
 			alias, err := e.importName(module+"/internal/handlers", "handlers")
 			if err != nil {
 				return err
@@ -233,32 +209,23 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 			return "", err
 		}
 	case "command":
-		stub, list := "command", "All"
+		stub, list := "command", "ProvideConsoleCommands"
 		if db {
-			stub, list = "command_db", "DatabaseAll"
+			stub, list = "command_db", "ProvideConsoleDatabaseCommands"
 		}
-		if err := create(stub, filepath.Join("internal/commands", data.Var+"Command.go"), data.Type); err != nil {
+		if err := create(stub, filepath.Join("internal/commands", data.Var+"Command.go")); err != nil {
 			return "", err
 		}
-		if err := op.edit("internal/commands/commands.go", func(e *editor) error {
-			param, err := e.commandParam(list, db)
-			if err != nil {
-				return err
-			}
-			return e.addLiteral(list, data.Type+"("+param+")", "commands")
+		if err := op.edit("providers/commands.go", func(e *editor) error {
+			return e.addCommand(module, list, data.Type, db)
 		}); err != nil {
 			return "", err
 		}
 	case "job":
-		if err := create(kind, filepath.Join("internal/jobs", data.Var+"Job.go"), data.Type+"Job", "New"+data.Type+"Job"); err != nil {
+		if err := create(kind, filepath.Join("internal/jobs", data.Var+"Job.go")); err != nil {
 			return "", err
 		}
 		if err := op.edit("providers/jobs.go", func(e *editor) error {
-			for _, set := range []string{"JobProviderSet", "ConsoleJobProviderSet"} {
-				if err := e.requireBundle(set, "Jobs"); err != nil {
-					return err
-				}
-			}
 			alias, err := e.importName(module+"/internal/jobs", "jobs")
 			if err != nil {
 				return err
@@ -276,15 +243,15 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 			return "", err
 		}
 	case "seeder":
-		if err := create(kind, filepath.Join("internal/database/seeders", data.Var+"Seeder.go"), data.Type+"Seeder", "New"+data.Type+"Seeder"); err != nil {
+		if err := create(kind, filepath.Join("database/seeders", data.Var+"Seeder.go")); err != nil {
 			return "", err
 		}
-		if err := op.edit("internal/database/database.go", func(e *editor) error {
-			alias, err := e.importName(module+"/internal/database/seeders", "seeders")
+		if err := op.edit("providers/database.go", func(e *editor) error {
+			alias, err := e.importName(module+"/database/seeders", "seeders")
 			if err != nil {
 				return err
 			}
-			if err := e.addSet("ProviderSet", alias+".New"+data.Type+"Seeder"); err != nil {
+			if err := e.addSet("DatabaseProviderSet", alias+".New"+data.Type+"Seeder"); err != nil {
 				return err
 			}
 			return e.addSeeder(data.Var, "*"+alias+"."+data.Type+"Seeder")
@@ -298,14 +265,12 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 		return "", err
 	}
 	message := fmt.Sprintf("%s created: %s", kind, raw)
-	if kind != "command" {
-		message += "\nRun Wire explicitly when these sets are selected: go tool wire gen ./cmd/http ./cmd/cobra ./cmd/worker"
-	}
+	message += "\nRun Wire explicitly when these sets are selected: go tool wire gen ./cmd/http ./cmd/cobra ./cmd/worker"
 	if kind == "handler" {
 		message += "\nImplement the handler and add its route explicitly."
 	}
 	if kind == "entity" {
-		message += "\nModel registered; no migration or schema change was applied."
+		message += "\nEntity created; explicitly list migration models in tools/schemaloader/main.go before db migrate:diff. No schema change was applied."
 	}
 	return message, nil
 }

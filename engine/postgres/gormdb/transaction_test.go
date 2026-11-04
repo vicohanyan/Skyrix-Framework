@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -232,23 +231,14 @@ func TestTransactionContextScopeAndSavepoints(t *testing.T) {
 		t.Fatalf("events=%v", r.events)
 	}
 }
-func TestSchemaValidationAndLegacyAdapter(t *testing.T) {
+func TestSchemaValidation(t *testing.T) {
 	r := &txRecorder{}
 	db := recordedDB(t, r)
-	if err := db.SetSchema(db.WithContext(context.Background()), "tenant"); !errors.Is(err, ErrTransactionRequired) {
-		t.Fatal(err)
-	}
 	bad := scope.WithSchema(context.Background(), "bad\x00schema")
 	if err := db.WithinTransaction(bad, func(*Database) error { t.Fatal("invalid callback"); return nil }); !errors.Is(err, ErrInvalidSchema) {
 		t.Fatal(err)
 	}
 	if len(r.events) != 0 {
-		t.Fatal(r.events)
-	}
-	if err := NewTxManager(db, nil).Execute(context.Background(), func(tx *gorm.DB) error { return tx.Exec("legacy SQL").Error }); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(r.events, []string{"BEGIN", `SET LOCAL search_path = "Main Schema", public`, "legacy SQL", "COMMIT"}) {
 		t.Fatal(r.events)
 	}
 }
@@ -278,9 +268,6 @@ func TestTransactionMainAndScopeCannotChange(t *testing.T) {
 	db := recordedDB(t, r)
 	ctx := scope.WithSchema(context.Background(), "tenant")
 	if err := db.WithinTransaction(ctx, func(tx *Database) error {
-		if err := tx.SetSchema(tx.DB, "other"); !errors.Is(err, ErrScopeMismatch) {
-			t.Fatalf("SetSchema mismatch=%v", err)
-		}
 		copy := NewDatabase(tx.DB, "other main")
 		if err := copy.WithContext(ctx).Error; !errors.Is(err, ErrScopeMismatch) {
 			t.Fatalf("main mismatch=%v", err)

@@ -118,7 +118,7 @@ func TestRehashFailureKeepsChecksum(t *testing.T) {
 }
 
 func TestDiffUsesWorkspaceDirectory(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "migrations")
+	dir := filepath.Join(t.TempDir(), "database/migrations")
 	config := diffConfig("/project", DiffOptions{Env: "local", DevURL: DefaultDevURL, Dir: dir})
 	if want := hclString(fileURL(dir)); !strings.Contains(config, "dir = "+want) {
 		t.Fatalf("config does not use %s:\n%s", dir, config)

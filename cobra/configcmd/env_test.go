@@ -6,23 +6,27 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"gitlab.com/skyrix-lib/framework/cobra/configcmd"
 	"gitlab.com/skyrix-lib/framework/cobra/console"
 	"gitlab.com/skyrix-lib/framework/config"
 )
 
 type defaults struct {
-	Z        string
-	Timeout  time.Duration
-	Enabled  bool
-	Ports    []int
-	Password string                 `secret:"true"`
-	Hidden   struct{ Token string } `secret:"true"`
+	Z        string        `env:"Z_Z"`
+	Timeout  time.Duration `env:"Z_TIMEOUT"`
+	Enabled  bool          `env:"Z_ENABLED"`
+	Ports    []int         `env:"Z_PORTS"`
+	Password string        `secret:"true" env:"Z_PASSWORD"`
+	Hidden   struct {
+		Token string `env:"Z_HIDDEN_TOKEN"`
+	} `secret:"true"`
 }
 
 func (*defaults) Validate() error { panic("metadata must not validate") }
 
-func run(t *testing.T, command *console.Command, args ...string) (string, error) {
+func run(t *testing.T, command *cobra.Command, args ...string) (string, error) {
 	t.Helper()
 	var out, stderr strings.Builder
 	err := console.New(command).Execute(context.Background(), append([]string{"config:env"}, args...), &out, &stderr)
@@ -35,14 +39,11 @@ func TestOutputAndSnapshot(t *testing.T) {
 	legacy := struct {
 		Port   int    `env:"LEGACY_PORT" env-default:"42"`
 		Secret string `env:"LEGACY_SECRET" env-default:"tag-secret" secret:"true"`
-	}{Port: 99}
+	}{}
 	t.Setenv("Z_Z", "live-env-value")
-	command := configcmd.Env(config.Section{Key: "z", Value: &d}, config.Section{Key: "a", Value: &legacy, LegacyEnv: true})
+	command := configcmd.Env(config.Section{Key: "z", Value: &d}, config.Section{Key: "a", Value: &legacy})
 	d.Z = "mutated-live-value"
 	d.Ports[0] = 99
-	if command.Needs() != console.NeedsNothing {
-		t.Fatal("command needs a graph")
-	}
 	output, err := run(t, command)
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +80,12 @@ func TestOutputAndSnapshot(t *testing.T) {
 }
 
 func TestSectionFilter(t *testing.T) {
-	var a, b struct{ Name string }
+	var a struct {
+		Name string `env:"A_NAME"`
+	}
+	var b struct {
+		Name string `env:"B_NAME"`
+	}
 	command := configcmd.Env(config.Section{Key: "a", Value: &a}, config.Section{Key: "b", Value: &b})
 	output, err := run(t, command, "--section", "b")
 	if err != nil {

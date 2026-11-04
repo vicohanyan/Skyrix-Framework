@@ -14,7 +14,6 @@ import (
 	support "gitlab.com/skyrix-lib/framework/scaffold"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 // DefaultDomainDir is where business domains live, relative to the project root.
@@ -35,9 +34,9 @@ func NewMakeCommand() *MakeCommand {
 }
 
 // Command describes the "make" group. Its commands are standalone
-// (console.NeedsNothing): they only write files in the project.
-func (c *MakeCommand) Command() *console.Command {
-	group := &console.Command{Use: "make", Short: "Create project scaffolding"}
+// : they only write files in the project.
+func (c *MakeCommand) Command() *cobra.Command {
+	group := &cobra.Command{Use: "make", Short: "Create project scaffolding"}
 	for _, kind := range []string{"domain", "entity", "repository", "service", "uow", "handler", "command", "job", "seeder", "stubs"} {
 		kind := kind
 		args := cobra.ExactArgs(1)
@@ -46,11 +45,11 @@ func (c *MakeCommand) Command() *console.Command {
 			args = cobra.NoArgs
 			use = kind
 		}
-		command := &console.Command{Use: use, Short: "Generate " + kind, Args: args}
+		command := &cobra.Command{Use: use, Short: "Generate " + kind, Args: args}
 		if kind == "command" {
-			command.Flags = func(f *pflag.FlagSet) { f.Bool("db", false, "use the existing lazy database graph") }
+			command.Flags().Bool("db", false, "use the existing lazy database graph")
 		}
-		command.Run = console.Standalone(func(cmd *cobra.Command, args []string) error {
+		command.RunE = console.Standalone(func(cmd *cobra.Command, args []string) error {
 			raw := ""
 			if len(args) > 0 {
 				raw = args[0]
@@ -66,31 +65,28 @@ func (c *MakeCommand) Command() *console.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), result)
 			return nil
 		})
-		group.Commands = append(group.Commands, command)
+		group.AddCommand(command)
 	}
-	group.Commands = append(group.Commands, c.migrationCommand())
+	group.AddCommand(c.migrationCommand())
 	return group
 }
 
-func (c *MakeCommand) migrationCommand() *console.Command {
-	return &console.Command{
+func (c *MakeCommand) migrationCommand() *cobra.Command {
+	command := &cobra.Command{
 		Use:   "migration <name>",
 		Short: "Create an empty SQL migration for hand-written changes",
-		Long: `Create migrations/<YYYYMMDDHHMMSS>_<name>.sql for SQL that is not generated from
+		Long: `Create database/migrations/<YYYYMMDDHHMMSS>_<name>.sql for SQL that is not generated from
 the models (extensions, triggers, functions, data fixes). With --notx the file
 is named *.notx.sql and runs outside a transaction.
 
 The command needs no Atlas CLI, account or database: it creates
-migrations/atlas.sum on the first migration and updates it afterwards with the
+database/migrations/atlas.sum on the first migration and updates it afterwards with the
 official Atlas Go library. When SQL migrations already exist, atlas.sum must be
 present and match them; otherwise nothing is written and the command asks for
 an explicit "db migrate:hash". After writing SQL into the new file, run
 "db migrate:hash" and commit the SQL file and atlas.sum together.`,
 		Args: cobra.ExactArgs(1),
-		Flags: func(flags *pflag.FlagSet) {
-			flags.Bool("notx", false, "run the migration outside a transaction (e.g. CREATE INDEX CONCURRENTLY)")
-		},
-		Run: console.Standalone(func(cmd *cobra.Command, args []string) error {
+		RunE: console.Standalone(func(cmd *cobra.Command, args []string) error {
 			noTx, _ := cmd.Flags().GetBool("notx")
 			root, err := support.ProjectRoot(c.ProjectRoot)
 			if err != nil {
@@ -152,4 +148,8 @@ an explicit "db migrate:hash". After writing SQL into the new file, run
 			return nil
 		}),
 	}
+
+	command.Flags().Bool("notx", false, "run the migration outside a transaction (e.g. CREATE INDEX CONCURRENTLY)")
+
+	return command
 }

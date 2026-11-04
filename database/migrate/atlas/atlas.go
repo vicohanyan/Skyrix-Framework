@@ -20,7 +20,7 @@ import (
 )
 
 // MigrationsDir is the migration directory relative to the project root.
-const MigrationsDir = "migrations"
+const MigrationsDir = "database/migrations"
 
 // ErrNotInstalled reports that the atlas binary is not in PATH.
 var ErrNotInstalled = errors.New("atlas CLI is not installed or not in PATH; install it with `curl -sSf https://atlasgo.sh | sh` (see https://atlasgo.io/getting-started)")

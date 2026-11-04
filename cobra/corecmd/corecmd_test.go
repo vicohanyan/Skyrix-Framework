@@ -18,11 +18,11 @@ import (
 	"gitlab.com/skyrix-lib/framework/scaffold/makecmd"
 )
 
-func TestCommandsDescribeFrameworkCommandsAndTheirNeeds(t *testing.T) {
+func TestCommandsIncludeFrameworkCommands(t *testing.T) {
 	commands := corecmd.Commands(corecmd.Options{
 		Migrations: migratecmd.New(nil, nil),
-		Database:   console.Value(console.NeedsDatabase, &dbcmd.Deps{}),
-		Jobs:       console.Value[engineJobs.Registry](console.NeedsApp, nil),
+		Database:   console.Value(&dbcmd.Deps{}),
+		Jobs:       console.Value[engineJobs.Registry](nil),
 	})
 	want := []string{"db", "jobs:run", "make", "config:env", "platform"}
 	if len(commands) != len(want) {
@@ -34,29 +34,11 @@ func TestCommandsDescribeFrameworkCommandsAndTheirNeeds(t *testing.T) {
 		}
 	}
 
-	c := console.New(commands...)
-	for _, test := range []struct {
-		path  []string
-		needs console.Needs
-	}{
-		{[]string{"db", "migrate"}, console.NeedsNothing},
-		{[]string{"db", "migrate:status"}, console.NeedsNothing},
-		{[]string{"db", "migrate:baseline"}, console.NeedsNothing},
-		{[]string{"db", "migrate:hash"}, console.NeedsNothing},
-		{[]string{"db", "migrate:diff"}, console.NeedsNothing},
-		{[]string{"db", "automigrate"}, console.NeedsDatabase},
-		{[]string{"db", "seed"}, console.NeedsDatabase},
-		{[]string{"jobs:run"}, console.NeedsApp},
-		{[]string{"config:env"}, console.NeedsNothing},
-		{[]string{"make", "domain"}, console.NeedsNothing},
-		{[]string{"make", "migration"}, console.NeedsNothing},
-	} {
-		command := c.Find(test.path...)
-		if command == nil {
-			t.Fatalf("%q is missing", test.path)
-		}
-		if command.Needs() != test.needs {
-			t.Fatalf("%q needs %v, want %v", test.path, command.Needs(), test.needs)
+	root := console.New(commands...).Root()
+	for _, path := range [][]string{{"db", "migrate"}, {"db", "migrate:status"}, {"db", "migrate:baseline"}, {"db", "migrate:hash"}, {"db", "migrate:diff"}, {"db", "seed"}, {"jobs:run"}, {"config:env"}, {"make", "domain"}, {"make", "migration"}} {
+		command, _, err := root.Find(path)
+		if err != nil || command.Name() != path[len(path)-1] {
+			t.Fatalf("%q is missing: %v", path, err)
 		}
 	}
 }
@@ -80,23 +62,25 @@ func TestManualMigrationProcessWithoutAtlas(t *testing.T) {
 		return migratecmd.Settings{}, nil, nil
 	}, fstest.MapFS{})
 	migrations.ProjectRoot = root
-	database := console.NewGraph(console.NeedsDatabase, func() (*dbcmd.Deps, func(), error) {
+	database := console.NewGraph(func() (*dbcmd.Deps, func(), error) {
 		t.Fatal("database graph built")
 		return nil, nil, nil
 	})
-	app := console.New(corecmd.Commands(corecmd.Options{
-		Migrations: migrations,
-		Database:   database,
-		Jobs:       console.Value[engineJobs.Registry](console.NeedsApp, nil),
-		Make:       &makecmd.MakeCommand{ProjectRoot: root, Now: func() time.Time { return now }},
-	})...)
+	newApp := func() *console.Console {
+		return console.New(corecmd.Commands(corecmd.Options{
+			Migrations: migrations,
+			Database:   database,
+			Jobs:       console.Value[engineJobs.Registry](nil),
+			Make:       &makecmd.MakeCommand{ProjectRoot: root, Now: func() time.Time { return now }},
+		})...)
+	}
 	run := func(args ...string) (string, error) {
 		var out strings.Builder
-		err := app.Execute(context.Background(), args, &out, &out)
+		err := newApp().Execute(context.Background(), args, &out, &out)
 		return out.String(), err
 	}
 	read := func(name string) string {
-		data, err := os.ReadFile(filepath.Join(root, "migrations", name))
+		data, err := os.ReadFile(filepath.Join(root, "database/migrations", name))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,20 +104,20 @@ func TestManualMigrationProcessWithoutAtlas(t *testing.T) {
 
 	// Writing SQL into the file breaks the checksum until db migrate:hash.
 	sql := "CREATE TABLE a (id bigint PRIMARY KEY);\n"
-	if err := os.WriteFile(filepath.Join(root, "migrations", first), []byte(sql), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "database/migrations", first), []byte(sql), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(time.Second)
 	if _, err := run("make", "migration", "create_b"); err == nil || !strings.Contains(err.Error(), "does not match") {
 		t.Fatalf("make migration after a manual edit error = %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "migrations", "20261104100001_create_b.sql")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, "database/migrations", "20261104100001_create_b.sql")); !os.IsNotExist(err) {
 		t.Fatalf("migration written despite the checksum mismatch: %v", err)
 	}
 	if read("atlas.sum") != sum {
 		t.Fatal("atlas.sum changed without db migrate:hash")
 	}
-	if output, err := run("db", "migrate:hash"); err != nil || !strings.Contains(output, "updated migrations/atlas.sum") {
+	if output, err := run("db", "migrate:hash"); err != nil || !strings.Contains(output, "updated database/migrations/atlas.sum") {
 		t.Fatalf("db migrate:hash = %q, %v", output, err)
 	}
 	if read(first) != sql || read("atlas.sum") == sum {

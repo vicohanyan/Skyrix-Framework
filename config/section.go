@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/ilyakaznacheev/cleanenv"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -21,11 +21,8 @@ type Section struct {
 	Key   string
 	Value any
 	// YAMLPath overrides the dotted key's YAML path. An empty slice selects
-	// the document root. Nil uses Key. Intended for legacy application formats.
+	// the document root. Nil uses Key.
 	YAMLPath []string
-	// LegacyEnv uses explicit env tags (without a section prefix), and
-	// env-default tags. Normal sections derive every env name from their key.
-	LegacyEnv bool
 }
 
 type Validator interface{ Validate() error }
@@ -42,14 +39,13 @@ type Field struct {
 
 // Metadata describes a selected section without exposing its working target.
 type Metadata struct {
-	Key       string
-	EnvPrefix string
-	YAMLPath  []string
-	Fields    []Field
+	Key      string
+	YAMLPath []string
+	Fields   []Field
 }
 
 // Sections returns detached section metadata, including the effective YAML path.
-// Legacy fields can override the derived EnvPrefix; Field.Env is authoritative.
+// Environment names come from cleanenv tags, including nested env-prefix tags.
 func (l *Loader) Sections() []Metadata {
 	out := make([]Metadata, 0, len(l.entries))
 	for _, e := range l.entries {
@@ -57,7 +53,7 @@ func (l *Loader) Sections() []Metadata {
 		if path == nil {
 			path = strings.Split(e.section.Key, ".")
 		}
-		m := Metadata{Key: e.section.Key, EnvPrefix: envPrefix(e.section.Key), YAMLPath: append([]string{}, path...)}
+		m := Metadata{Key: e.section.Key, YAMLPath: append([]string{}, path...)}
 		for _, f := range e.fields {
 			m.Fields = append(m.Fields, f.Field)
 		}
@@ -65,7 +61,6 @@ func (l *Loader) Sections() []Metadata {
 	}
 	return out
 }
-func envPrefix(key string) string { return strings.ToUpper(strings.ReplaceAll(key, ".", "_")) + "_" }
 
 type binding struct {
 	Field
@@ -104,7 +99,7 @@ func New(sections ...Section) (*Loader, error) {
 			s.YAMLPath = append([]string{}, s.YAMLPath...)
 		}
 		e := entry{section: s}
-		if err := walk(v.Elem().Type(), nil, "", false, s, &e.fields); err != nil {
+		if err := walk(v.Elem().Type(), nil, "", "", false, s, &e.fields); err != nil {
 			return nil, err
 		}
 		for i := range e.fields {
@@ -113,20 +108,28 @@ func New(sections ...Section) (*Loader, error) {
 				f.Default = "[REDACTED]"
 			} else {
 				value := v.Elem().FieldByIndex(f.index)
-				if s.LegacyEnv {
-					if raw, ok := v.Elem().Type().FieldByIndex(f.index).Tag.Lookup("env-default"); ok {
-						value = reflect.New(value.Type()).Elem()
-						if err := decodeText(raw, value); err != nil {
-							return nil, fmt.Errorf("config %s: invalid default", f.Path)
-						}
+				f.Default = formatDefault(value)
+				if raw, ok := v.Elem().Type().FieldByIndex(f.index).Tag.Lookup("env-default"); ok && value.IsZero() {
+					if value.Kind() == reflect.String {
+						f.Default = strconv.Quote(raw)
+					} else {
+						f.Default = raw
 					}
 				}
-				f.Default = formatDefault(value)
 			}
-			if envs[f.Env] || paths[f.Path] {
+			if paths[f.Path] {
 				return nil, fmt.Errorf("config %s: conflicting field or env name", f.Path)
 			}
-			envs[f.Env], paths[f.Path] = true, true
+			for _, env := range strings.Split(f.Env, ",") {
+				if env == "" {
+					continue
+				}
+				if envs[env] {
+					return nil, fmt.Errorf("config %s: conflicting env name", f.Path)
+				}
+				envs[env] = true
+			}
+			paths[f.Path] = true
 		}
 		l.entries = append(l.entries, e)
 	}
@@ -149,7 +152,7 @@ func formatDefault(v reflect.Value) string {
 	return fmt.Sprint(v.Interface())
 }
 
-func walk(t reflect.Type, index []int, prefix string, secret bool, s Section, fields *[]binding) error {
+func walk(t reflect.Type, index []int, prefix, envPrefix string, secret bool, s Section, fields *[]binding) error {
 	seen := map[string]bool{}
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
@@ -176,42 +179,23 @@ func walk(t reflect.Type, index []int, prefix string, secret bool, s Section, fi
 		}
 		idx := append(append([]int{}, index...), i)
 		hidden := secret || f.Tag.Get("secret") == "true"
-		if f.Type.Kind() == reflect.Struct {
-			if err := walk(f.Type, idx, path, hidden, s, fields); err != nil {
+		if f.Type.Kind() == reflect.Struct && f.Type != reflect.TypeOf(time.Time{}) {
+			if err := walk(f.Type, idx, path, envPrefix+f.Tag.Get("env-prefix"), hidden, s, fields); err != nil {
 				return err
 			}
 			continue
 		}
-		if !supported(f.Type) {
-			return fmt.Errorf("config %s.%s: unsupported type", s.Key, path)
-		}
-		env := envPrefix(s.Key) + strings.ToUpper(strings.ReplaceAll(path, ".", "_"))
-		if s.LegacyEnv && f.Tag.Get("env") != "" {
-			env = f.Tag.Get("env")
+		env := f.Tag.Get("env")
+		if env != "" {
+			names := strings.Split(env, ",")
+			for i := range names {
+				names[i] = envPrefix + names[i]
+			}
+			env = strings.Join(names, ",")
 		}
 		*fields = append(*fields, binding{Field: Field{Path: s.Key + "." + path, Env: env, Type: f.Type.String(), Secret: hidden}, index: idx})
 	}
 	return nil
-}
-func supported(t reflect.Type) bool {
-	switch t.Kind() {
-	case reflect.String, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
-		return true
-	case reflect.Slice:
-		return supportedList(t, map[reflect.Type]bool{})
-	}
-	return false
-}
-
-func supportedList(t reflect.Type, seen map[reflect.Type]bool) bool {
-	if t.Kind() != reflect.Slice {
-		return supported(t)
-	}
-	if seen[t] {
-		return false
-	}
-	seen[t] = true
-	return supportedList(t.Elem(), seen)
 }
 
 // Fields returns an independent metadata slice in declaration order.
@@ -227,11 +211,8 @@ func (l *Loader) Fields() []Field {
 
 // Load overlays YAML and then environment on the targets' defaults. Only the
 // supplied sections are decoded and validated. Failed loads may partially update
-// targets; discard them on error. lookup nil uses os.LookupEnv (including empty).
-func (l *Loader) Load(r io.Reader, lookup func(string) (string, bool)) error {
-	if lookup == nil {
-		lookup = os.LookupEnv
-	}
+// targets; discard them on error. Environment names and parsing use cleanenv tags.
+func (l *Loader) Load(r io.Reader) error {
 	var root yaml.Node
 	if r != nil {
 		d := yaml.NewDecoder(r)
@@ -249,17 +230,6 @@ func (l *Loader) Load(r io.Reader, lookup func(string) (string, bool)) error {
 	}
 	for _, e := range l.entries {
 		s := e.section
-		v := reflect.ValueOf(s.Value).Elem()
-		if s.LegacyEnv {
-			for _, f := range e.fields {
-				sf := v.Type().FieldByIndex(f.index)
-				if def, ok := sf.Tag.Lookup("env-default"); ok {
-					if err := decodeText(def, v.FieldByIndex(f.index)); err != nil {
-						return fmt.Errorf("config %s: invalid default", f.Path)
-					}
-				}
-			}
-		}
 		path := s.YAMLPath
 		if path == nil {
 			path = strings.Split(s.Key, ".")
@@ -273,27 +243,12 @@ func (l *Loader) Load(r io.Reader, lookup func(string) (string, bool)) error {
 			}
 		}
 		if n != nil {
-			if err := overlay(n, v, s.Key); err != nil {
-				return err
+			if err := n.Decode(s.Value); err != nil {
+				return fmt.Errorf("config %s: invalid YAML value", s.Key)
 			}
 		}
-		for _, f := range e.fields {
-			if raw, ok := lookup(f.Env); ok {
-				target := v.FieldByIndex(f.index)
-				if s.LegacyEnv && target.Kind() == reflect.Slice && target.Type().Elem().Kind() == reflect.String {
-					var parts []string
-					if raw != "" {
-						parts = strings.Split(raw, ",")
-					}
-					list := reflect.MakeSlice(target.Type(), len(parts), len(parts))
-					for i, p := range parts {
-						list.Index(i).SetString(strings.TrimSpace(p))
-					}
-					target.Set(list)
-				} else if err := decodeText(raw, target); err != nil {
-					return fmt.Errorf("config %s: invalid environment value", f.Path)
-				}
-			}
+		if err := cleanenv.ReadEnv(s.Value); err != nil {
+			return fmt.Errorf("config %s: invalid environment or default value", s.Key)
 		}
 	}
 	for _, e := range l.entries {
@@ -326,74 +281,6 @@ func child(n *yaml.Node, key string) (*yaml.Node, error) {
 	}
 	return found, nil
 }
-func overlay(n *yaml.Node, v reflect.Value, path string) error {
-	if v.Kind() == reflect.Struct {
-		for i := 0; i < v.NumField(); i++ {
-			f := v.Type().Field(i)
-			if f.PkgPath != "" {
-				continue
-			}
-			name := strings.Split(f.Tag.Get("yaml"), ",")[0]
-			if name == "-" {
-				continue
-			}
-			if name == "" {
-				name = strings.ToLower(f.Name)
-			}
-			item, err := child(n, name)
-			if err != nil {
-				return fmt.Errorf("config %s: invalid YAML mapping", path)
-			}
-			if item != nil {
-				if err := overlay(item, v.Field(i), path+"."+name); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}
-	if n.Tag == "!!null" || n.Kind == yaml.AliasNode {
-		return fmt.Errorf("config %s: null and aliases are unsupported", path)
-	}
-	if v.Kind() == reflect.Slice {
-		if n.Kind != yaml.SequenceNode {
-			return fmt.Errorf("config %s: expected list", path)
-		}
-		result := reflect.MakeSlice(v.Type(), len(n.Content), len(n.Content))
-		for i, item := range n.Content {
-			if err := overlay(item, result.Index(i), fmt.Sprintf("%s[%d]", path, i)); err != nil {
-				return err
-			}
-		}
-		v.Set(result)
-		return nil
-	}
-	if err := n.Decode(v.Addr().Interface()); err != nil {
-		return fmt.Errorf("config %s: invalid value", path)
-	}
-	return nil
-}
-func decodeText(raw string, v reflect.Value) error {
-	if v.Kind() == reflect.String {
-		v.SetString(raw)
-		return nil
-	}
-	if v.Type() == durationType {
-		d, err := time.ParseDuration(raw)
-		if err == nil {
-			v.SetInt(int64(d))
-		}
-		return err
-	}
-	var n yaml.Node
-	if err := yaml.Unmarshal([]byte(raw), &n); err != nil {
-		return err
-	}
-	if len(n.Content) == 0 {
-		return fmt.Errorf("empty value")
-	}
-	return overlay(n.Content[0], v, "env")
-}
 
 // Safe returns a detached diagnostic tree. Secret fields (including whole
 // structs or lists) are replaced without changing the working configuration.
@@ -408,7 +295,22 @@ func safe(v reflect.Value, hidden bool) any {
 	if hidden {
 		return "[REDACTED]"
 	}
+	if v.Type() == reflect.TypeOf(time.Time{}) {
+		return v.Interface()
+	}
 	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		if v.IsNil() {
+			return nil
+		}
+		return safe(v.Elem(), false)
+	case reflect.Map:
+		out := map[string]any{}
+		iter := v.MapRange()
+		for iter.Next() {
+			out[fmt.Sprint(iter.Key().Interface())] = safe(iter.Value(), false)
+		}
+		return out
 	case reflect.Struct:
 		out := map[string]any{}
 		for i := 0; i < v.NumField(); i++ {
@@ -426,7 +328,7 @@ func safe(v reflect.Value, hidden bool) any {
 			out[name] = safe(v.Field(i), f.Tag.Get("secret") == "true")
 		}
 		return out
-	case reflect.Slice:
+	case reflect.Slice, reflect.Array:
 		out := make([]any, v.Len())
 		for i := range out {
 			out[i] = safe(v.Index(i), false)

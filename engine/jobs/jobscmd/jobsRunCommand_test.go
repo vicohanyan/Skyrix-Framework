@@ -65,27 +65,23 @@ func TestJobsRunCommandPassesArgsToRegistry(t *testing.T) {
 }
 
 func newCommand(registry engineJobs.Registry) *cobra.Command {
-	return Command(console.Value(console.NeedsApp, registry)).Cobra()
+	return Command(console.Value(registry))
 }
 
 // The registry is built only when jobs:run runs, not for its help.
 func TestJobsRunCommandBuildsRegistryOnlyWhenItRuns(t *testing.T) {
 	builds := 0
-	registry := console.NewGraph(console.NeedsApp, func() (engineJobs.Registry, func(), error) {
+	registry := console.NewGraph(func() (engineJobs.Registry, func(), error) {
 		builds++
 		return &fakeJobsRegistry{}, func() {}, nil
 	})
-	command := Command(registry)
-	if command.Needs() != console.NeedsApp {
-		t.Fatalf("jobs:run needs %v, want application", command.Needs())
-	}
-	cmd := command.Cobra()
+	cmd := Command(registry)
 	cmd.SetArgs([]string{"--help"})
 	cmd.SetOut(&bytes.Buffer{})
 	if err := cmd.Execute(); err != nil || builds != 0 {
 		t.Fatalf("--help: err = %v, builds = %d", err, builds)
 	}
-	cmd = command.Cobra()
+	cmd = Command(registry)
 	cmd.SetArgs([]string{"--name=x"})
 	cmd.SetOut(&bytes.Buffer{})
 	if err := cmd.Execute(); err != nil || builds != 1 {

@@ -19,7 +19,7 @@ func TestTenantFixture(t *testing.T) {
 	l := projectLayout(t)
 	overlay := filepath.Join(l.fixtures, "tenant")
 	for _, name := range []string{
-		"providers/tenant.go", "internal/config/tenant.go", "internal/database/database.go",
+		"providers/tenant.go", "internal/config/tenant.go",
 		"cmd/http/wire.go", "cmd/http/tenant_fixture_test.go", "tools/schemaloader/main.go",
 	} {
 		requireFile(t, filepath.Join(overlay, name), "tenant fixture "+name)
@@ -30,19 +30,24 @@ func TestTenantFixture(t *testing.T) {
 
 	// Copy the Template sources (without generated logs or secrets), then
 	// overlay the tenant wiring.
-	copyTree(t, l.template, dir, "logs", "secret", ".idea")
+	copyTree(t, l.template, dir, ".git", "logs", "secret", ".idea")
 	copyTree(t, overlay, dir)
-	patchFile(t, filepath.Join(dir, "go.mod"), "replace gitlab.com/skyrix-lib/framework => ..", "replace gitlab.com/skyrix-lib/framework => "+l.framework)
-	patchFile(t, filepath.Join(dir, "go.mod"), "replace gitlab.com/skyrix-lib/auth => ../../skyrix-auth-lib", "replace gitlab.com/skyrix-lib/auth => "+l.authLib+
-		"\n\nrequire gitlab.com/skyrix-lib/tenant v0.0.0\n\nreplace gitlab.com/skyrix-lib/tenant => "+l.tenantLib)
+	file := filepath.Join(dir, "go.mod")
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, append(data, []byte("\nrequire gitlab.com/skyrix-lib/tenant v0.0.0\n")...), 0644); err != nil {
+		t.Fatal(err)
+	}
 	// List the tenant section for config:env, as Template README "Tenants" says.
 	patchFile(t, filepath.Join(dir, "internal/config/config.go"),
-		`{Key: "migrations", Value: &Migrations{}, YAMLPath: []string{"MIGRATIONS"}, LegacyEnv: true},`,
-		`{Key: "migrations", Value: &Migrations{}, YAMLPath: []string{"MIGRATIONS"}, LegacyEnv: true},
-		{Key: "tenant", Value: &TenantCache{}, YAMLPath: []string{"TENANT_CACHE"}, LegacyEnv: true},`)
+		`{Key: "migrations", Value: &Migrations{}, YAMLPath: []string{"MIGRATIONS"}},`,
+		`{Key: "migrations", Value: &Migrations{}, YAMLPath: []string{"MIGRATIONS"}},
+		{Key: "tenant", Value: &TenantCache{}, YAMLPath: []string{"TENANT_CACHE"}},`)
 
-	env := append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod -buildvcs=false", "GOPROXY=off", "GOSUMDB=off")
-	wire := strings.TrimSpace(goCommand(t, l.template, env, "go", "tool", "-n", "wire"))
+	env := workspaceEnv(t, l, dir, true)
+	wire := strings.TrimSpace(goCommand(t, dir, env, "go", "tool", "-n", "wire"))
 	generated := filepath.Join(dir, "cmd/http/wire_gen.go")
 	goCommand(t, dir, env, wire, "gen", "./cmd/http")
 	first, err := os.ReadFile(generated)
@@ -88,7 +93,7 @@ func TestDefaultTemplateWithoutTenant(t *testing.T) {
 	}
 	cmd := exec.Command("go", "list", "-deps", "-test", "./...")
 	cmd.Dir = l.template
-	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=readonly")
+	cmd.Env = workspaceEnv(t, l, l.template, false)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, output)
@@ -131,7 +136,7 @@ func TestTemplateHasNoFrameworkFixtures(t *testing.T) {
 		}
 		rel, _ := filepath.Rel(l.template, path)
 		if entry.IsDir() {
-			if rel == "logs" {
+			if rel == "logs" || rel == ".git" {
 				return filepath.SkipDir
 			}
 			if filepath.Base(filepath.Dir(path)) == "testdata" && fixtures[entry.Name()] {

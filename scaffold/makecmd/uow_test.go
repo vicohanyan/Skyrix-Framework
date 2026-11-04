@@ -44,7 +44,7 @@ func TestUOWProjectStubAndConflicts(t *testing.T) {
 		t.Fatal("symbol conflict accepted")
 	}
 	assertUnchanged(t, root, before)
-	for _, bad := range []string{"{{.Unknown}}", "package unitofwork {", "package unitofwork\ntype Unrelated struct{}"} {
+	for _, bad := range []string{"{{.Unknown}}", "package unitofwork {"} {
 		writeProject(t, root, "stubs/skyrix/uow.stub", bad)
 		before = projectSnapshot(t, root)
 		if _, err := maker.generate("uow", "sales/Bad", false); err == nil {

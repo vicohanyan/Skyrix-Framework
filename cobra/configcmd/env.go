@@ -7,7 +7,6 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 	"gitlab.com/skyrix-lib/framework/cobra/console"
 	"gitlab.com/skyrix-lib/framework/config"
 )
@@ -15,20 +14,17 @@ import (
 // Env lists defaults from fresh, explicitly supplied section descriptions.
 // Pass default targets, never configuration populated from YAML or environment.
 // It calls neither Load nor Validate and needs no application dependency graph.
-func Env(sections ...config.Section) *console.Command {
+func Env(sections ...config.Section) *cobra.Command {
 	loader, metadataErr := config.New(sections...)
 	var metadata []config.Metadata
 	if metadataErr == nil {
 		metadata = loader.Sections()
 	}
-	return &console.Command{
+	command := &cobra.Command{
 		Use:   "config:env",
 		Short: "List environment variables, types and safe defaults",
 		Args:  cobra.NoArgs,
-		Flags: func(flags *pflag.FlagSet) {
-			flags.String("section", "", "Show only the section with this key")
-		},
-		Run: console.Standalone(func(cmd *cobra.Command, _ []string) error {
+		RunE: console.Standalone(func(cmd *cobra.Command, _ []string) error {
 			if metadataErr != nil {
 				return metadataErr
 			}
@@ -62,4 +58,8 @@ func Env(sections ...config.Section) *console.Command {
 			return out.Flush()
 		}),
 	}
+
+	command.Flags().String("section", "", "Show only the section with this key")
+
+	return command
 }

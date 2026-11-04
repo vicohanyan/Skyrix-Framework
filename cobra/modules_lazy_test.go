@@ -13,9 +13,9 @@ import (
 func TestDriverCommandsAreLazy(t *testing.T) {
 	for _, args := range [][]string{{"--help"}, {"driver", "--help"}, {"completion", "bash"}, {"__complete", "driver", ""}, {"driver"}} {
 		built, cleaned, ran := 0, 0, 0
-		graph := console.NewGraph(console.NeedsApp, func() (int, func(), error) { built++; return 7, func() { cleaned++ }, nil })
-		module := commandModule{factories: []CommandFactory{func() *console.Command {
-			return &console.Command{Use: "driver", Run: console.With(graph, func(_ *spfcobra.Command, _ []string, v int) error {
+		graph := console.NewGraph(func() (int, func(), error) { built++; return 7, func() { cleaned++ }, nil })
+		module := commandModule{factories: []CommandFactory{func() *spfcobra.Command {
+			return &spfcobra.Command{Use: "driver", RunE: console.With(graph, func(_ *spfcobra.Command, _ []string, v int) error {
 				if v != 7 {
 					t.Fatal(v)
 				}
@@ -44,8 +44,8 @@ func TestDriverCommandsAreLazy(t *testing.T) {
 func TestDriverBuildFailureCleansUp(t *testing.T) {
 	cleaned, ran := 0, false
 	failed := errors.New("constructor failed")
-	graph := console.NewGraph(console.NeedsApp, func() (int, func(), error) { return 0, func() { cleaned++ }, failed })
-	app := console.New(&console.Command{Use: "driver", Run: console.With(graph, func(_ *spfcobra.Command, _ []string, _ int) error { ran = true; return nil })})
+	graph := console.NewGraph(func() (int, func(), error) { return 0, func() { cleaned++ }, failed })
+	app := console.New(&spfcobra.Command{Use: "driver", RunE: console.With(graph, func(_ *spfcobra.Command, _ []string, _ int) error { ran = true; return nil })})
 	err := app.Execute(context.Background(), []string{"driver"}, io.Discard, io.Discard)
 	graph.Close()
 	if !errors.Is(err, failed) || cleaned != 1 || ran {

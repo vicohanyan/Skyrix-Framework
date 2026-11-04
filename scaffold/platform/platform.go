@@ -137,14 +137,6 @@ func resolve(dir string, drivers []Driver) error {
 		if _, ok := p.Types.Scope().Lookup("Module").(*types.TypeName); !ok {
 			return fmt.Errorf("driver %s Module must be a type", d.ImportPath)
 		}
-		provider, ok := p.Types.Scope().Lookup("ProviderSet").(*types.Var)
-		if !ok {
-			return fmt.Errorf("driver %s ProviderSet must be a Wire set", d.ImportPath)
-		}
-		named, ok := provider.Type().(*types.Named)
-		if !ok || named.Obj().Pkg() == nil || named.Obj().Pkg().Path() != "github.com/goforj/wire" || named.Obj().Name() != "ProviderSet" {
-			return fmt.Errorf("driver %s ProviderSet must use github.com/goforj/wire", d.ImportPath)
-		}
 		cfg, ok := configType.Type().Underlying().(*types.Struct)
 		if !ok || cfg == nil {
 			return fmt.Errorf("driver %s Config must be a struct", d.ImportPath)

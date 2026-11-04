@@ -3,15 +3,19 @@ package commands
 import (
  "gitlab.com/skyrix-lib/framework/cobra/console"
  "github.com/spf13/cobra"
+ "{{.Module}}/internal/config"
+ "gitlab.com/skyrix-lib/framework/logger"
 )
 
-// {{.Type}} describes metadata without building the application graph.
-func {{.Type}}(deps *console.Graph[*Deps]) *console.Command {
- return &console.Command{
+// {{.Type}} describes metadata; providers supplies its lazy runner.
+func {{.Type}}(run console.Handler) *cobra.Command {
+ return &cobra.Command{
   Use: {{printf "%q" .Use}}, Short: "Implement {{.Type}}", Args: cobra.NoArgs,
-  Run: console.With(deps,func(cmd *cobra.Command,args []string,deps *Deps) error {
-   // Add command behavior here. Dependencies are available only on execution.
-   return nil
-  }),
+  RunE: run,
  }
+}
+
+// Run{{.Type}} implements the command with dependencies supplied on execution.
+func Run{{.Type}}(cmd *cobra.Command, args []string, cfg *config.Config, log logger.Interface) error {
+ return nil
 }

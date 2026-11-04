@@ -100,13 +100,13 @@ func TestSumMatchesAtlasFormat(t *testing.T) {
 func TestWorkspaceFirstAndNextGenerationWithoutAtlasCLI(t *testing.T) {
 	withoutAtlasCLI(t)
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, "migrations", "README.md"), "placeholder")
+	writeFile(t, filepath.Join(root, "database/migrations", "README.md"), "placeholder")
 
 	if err := generate(t, root, "20261103000000_first.sql", "SELECT 1;"); err != nil {
 		t.Fatal(err)
 	}
 	first := atlastest.Snapshot(t, root)
-	if !strings.Contains(first["migrations/atlas.sum"], "20261103000000_first.sql h1:") || first["migrations/20261103000000_first.sql"] != "SELECT 1;" || first["migrations/README.md"] != "placeholder" {
+	if !strings.Contains(first["database/migrations/atlas.sum"], "20261103000000_first.sql h1:") || first["database/migrations/20261103000000_first.sql"] != "SELECT 1;" || first["database/migrations/README.md"] != "placeholder" {
 		t.Fatalf("after first generation: %v", first)
 	}
 	if err := validate(t, root); err != nil {
@@ -117,7 +117,7 @@ func TestWorkspaceFirstAndNextGenerationWithoutAtlasCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := atlastest.Snapshot(t, root)
-	if second["migrations/atlas.sum"] == first["migrations/atlas.sum"] || second["migrations/20261103000000_first.sql"] != "SELECT 1;" {
+	if second["database/migrations/atlas.sum"] == first["database/migrations/atlas.sum"] || second["database/migrations/20261103000000_first.sql"] != "SELECT 1;" {
 		t.Fatalf("after second generation: %v", second)
 	}
 	if err := validate(t, root); err != nil {
@@ -147,9 +147,9 @@ func TestWorkspaceRejectsMissingOrStaleChecksum(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
-			writeFile(t, filepath.Join(root, "migrations", "20261101000000_existing.sql"), "SELECT 0;")
+			writeFile(t, filepath.Join(root, "database/migrations", "20261101000000_existing.sql"), "SELECT 0;")
 			if test.sum != "" {
-				writeFile(t, filepath.Join(root, "migrations", "atlas.sum"), test.sum)
+				writeFile(t, filepath.Join(root, "database/migrations", "atlas.sum"), test.sum)
 			}
 			before := atlastest.Snapshot(t, root)
 			err := generate(t, root, "20261103000000_next.sql", "SELECT 1;")
@@ -175,7 +175,7 @@ func TestManualEditNeedsExplicitRehash(t *testing.T) {
 	if changed, err := rehash(t, root); err != nil || changed {
 		t.Fatalf("Rehash() of a valid directory = %v, %v", changed, err)
 	}
-	writeFile(t, filepath.Join(root, "migrations", "20261103000000_first.sql"), "CREATE TABLE a (id int);\n")
+	writeFile(t, filepath.Join(root, "database/migrations", "20261103000000_first.sql"), "CREATE TABLE a (id int);\n")
 	if err := generate(t, root, "20261103000001_second.sql", ""); !errors.Is(err, atlas.ErrSumMismatch) {
 		t.Fatalf("generation after a manual edit error = %v, want ErrSumMismatch", err)
 	}
@@ -186,11 +186,11 @@ func TestManualEditNeedsExplicitRehash(t *testing.T) {
 	}
 	after := atlastest.Snapshot(t, root)
 	for name, data := range before {
-		if name != "migrations/atlas.sum" && after[name] != data {
+		if name != "database/migrations/atlas.sum" && after[name] != data {
 			t.Fatalf("Rehash changed %s", name)
 		}
 	}
-	if len(after) != len(before) || after["migrations/atlas.sum"] == before["migrations/atlas.sum"] {
+	if len(after) != len(before) || after["database/migrations/atlas.sum"] == before["database/migrations/atlas.sum"] {
 		t.Fatalf("Rehash result: %v", after)
 	}
 	if err := validate(t, root); err != nil {
@@ -204,7 +204,7 @@ func TestManualEditNeedsExplicitRehash(t *testing.T) {
 func TestRehashEdgeCases(t *testing.T) {
 	t.Run("empty directory stays without atlas.sum", func(t *testing.T) {
 		root := t.TempDir()
-		writeFile(t, filepath.Join(root, "migrations", "README.md"), "placeholder")
+		writeFile(t, filepath.Join(root, "database/migrations", "README.md"), "placeholder")
 		before := atlastest.Snapshot(t, root)
 		if changed, err := rehash(t, root); err != nil || changed {
 			t.Fatalf("Rehash() = %v, %v", changed, err)
@@ -215,7 +215,7 @@ func TestRehashEdgeCases(t *testing.T) {
 	})
 	t.Run("missing atlas.sum is created", func(t *testing.T) {
 		root := t.TempDir()
-		writeFile(t, filepath.Join(root, "migrations", "20261101000000_existing.sql"), "SELECT 1;")
+		writeFile(t, filepath.Join(root, "database/migrations", "20261101000000_existing.sql"), "SELECT 1;")
 		if changed, err := rehash(t, root); err != nil || !changed {
 			t.Fatalf("Rehash() = %v, %v", changed, err)
 		}
@@ -225,7 +225,7 @@ func TestRehashEdgeCases(t *testing.T) {
 	})
 	t.Run("invalid file name writes nothing", func(t *testing.T) {
 		root := t.TempDir()
-		writeFile(t, filepath.Join(root, "migrations", "create_a.sql"), "SELECT 1;")
+		writeFile(t, filepath.Join(root, "database/migrations", "create_a.sql"), "SELECT 1;")
 		before := atlastest.Snapshot(t, root)
 		if _, err := rehash(t, root); err == nil || !strings.Contains(err.Error(), "nothing was written") {
 			t.Fatalf("Rehash() error = %v", err)
@@ -250,7 +250,7 @@ func TestWorkspacePublishDetectsConcurrentChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(root, "migrations", "20261103000005_user.sql"), "SELECT 5;")
+	writeFile(t, filepath.Join(root, "database/migrations", "20261103000005_user.sql"), "SELECT 5;")
 	before := atlastest.Snapshot(t, root)
 	if err := workspace.Publish([]string{"20261103000000_first.sql"}, sum); err == nil || !strings.Contains(err.Error(), "changed during generation") {
 		t.Fatalf("Publish() error = %v", err)
@@ -262,13 +262,13 @@ func TestWorkspacePublishDetectsConcurrentChanges(t *testing.T) {
 
 func TestRehashDetectsConcurrentChanges(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, "migrations", "20261101000000_existing.sql"), "SELECT 1;")
+	writeFile(t, filepath.Join(root, "database/migrations", "20261101000000_existing.sql"), "SELECT 1;")
 	workspace, err := atlas.OpenWorkspace(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer workspace.Close()
-	writeFile(t, filepath.Join(root, "migrations", "20261103000005_user.sql"), "SELECT 5;")
+	writeFile(t, filepath.Join(root, "database/migrations", "20261103000005_user.sql"), "SELECT 5;")
 	before := atlastest.Snapshot(t, root)
 	if _, err := workspace.Rehash(); err == nil || !strings.Contains(err.Error(), "changed during generation") {
 		t.Fatalf("Rehash() error = %v", err)
@@ -280,7 +280,10 @@ func TestRehashDetectsConcurrentChanges(t *testing.T) {
 
 func TestWorkspaceRejectsSymlinkedDirectory(t *testing.T) {
 	root := t.TempDir()
-	if err := os.Symlink(t.TempDir(), filepath.Join(root, "migrations")); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "database"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(root, "database/migrations")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := atlas.OpenWorkspace(root); err == nil || !strings.Contains(err.Error(), "symlink") {
@@ -303,7 +306,7 @@ func TestRealAtlasCLIChecksum(t *testing.T) {
 	if err := generate(t, root, "20261103000001_second.notx.sql", "CREATE TABLE b (id int);"); err != nil {
 		t.Fatal(err)
 	}
-	ours, err := os.ReadFile(filepath.Join(root, "migrations", "atlas.sum"))
+	ours, err := os.ReadFile(filepath.Join(root, "database/migrations", "atlas.sum"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +315,7 @@ func TestRealAtlasCLIChecksum(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("atlas migrate hash: %v\n%s", err, out)
 	}
-	theirs, err := os.ReadFile(filepath.Join(root, "migrations", "atlas.sum"))
+	theirs, err := os.ReadFile(filepath.Join(root, "database/migrations", "atlas.sum"))
 	if err != nil {
 		t.Fatal(err)
 	}

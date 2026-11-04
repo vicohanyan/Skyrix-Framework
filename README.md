@@ -19,8 +19,8 @@ It is a library: services import it. It provides
   default;
 - tooling — `cmd/platformgen`, `scaffold/makecmd`, `logger`, `validation`.
 
-New services start from the application template in [`template/`](template/),
-which is copied, not imported (see [template/README.md](template/README.md)).
+New services start from the separate [Template repository](../framework-template/),
+which is copied, not imported (see [Template README](../framework-template/README.md)).
 The architecture, package layers and dependency rules are described in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -125,7 +125,7 @@ go build ./... && go vet ./... && go test -count=1 ./...
 `-count=1` matters for the dependency tests (`internal/depcheck`), which read
 the import graph with `go list`. Tests against real servers run when
 `SKYRIX_TEST_POSTGRES_DSN` or `SKYRIX_TEST_REDIS_ADDR` is set. The template
-is a separate module in `template/`; the repository `go.work` includes both.
+is a separate repository (`../framework-template`); use an external workspace.
 
 ## Section configuration
 
@@ -237,7 +237,6 @@ network provider. ConfigSet alone does not enable infrastructure. Driver adapter
 use the same `config.Section` loader; the former `config=Field` option is removed.
 `config:env` describes fresh defaults without reading YAML/env or calling Validate.
 
-
 ## Explicit platform composition
 
 `cmd/platformgen` generates independent driver sets in the application's
@@ -333,14 +332,14 @@ file/type conflict rather than overwrite each other.
 | Generator | Output and registration |
 | --- | --- |
 | domain | `provider.go` and package docs under dto/entity/interfaces/repository/services/unitOfWork; adds its ProviderSet to `providers/domains.go`'s DomainProviderSet and ConsoleDomainProviderSet |
-| entity | Model and constructor in the domain's entity package; adds a model literal to `internal/database.Models` |
+| entity | Model and constructor in the domain's entity package; register migration models explicitly in `tools/schemaloader/main.go` |
 | repository/service | Concrete skeleton and constructor in the domain's repository/services package; adds constructor to its ProviderSet |
 | uow | `make uow order/CreateOrder` creates `unitOfWork/createOrderUOW.go`, `CreateOrderUOW`, constructor and Execute(ctx) with WithinTransaction; registers only the domain constructor |
 | handler | BaseHandler-based HTTP skeleton in `internal/handlers`; adds constructor and Handlers field in `providers/handlers.go`; no route is added |
-| command | console.Command factory in `internal/commands`; registers in `commands.All`, receiving the existing lazy application graph |
-| command --db | Registers in `commands.DatabaseAll`, receiving the existing lazy database graph; help/completion never build it |
+| command | console.Command factory in `internal/commands`; registers in `providers.ProvideConsoleCommands`, receiving the existing lazy application graph |
+| command --db | Registers in `providers.ProvideConsoleDatabaseCommands`, receiving the existing lazy database graph; help/completion never build it |
 | job | Job implementation in `internal/jobs`; constructor in both JobProviderSet and ConsoleJobProviderSet, field in Jobs, and registration in ProvideRegisteredJobsRegistry |
-| seeder | Idempotent no-op Seeder in `internal/database/seeders`; constructor in database.ProviderSet and parameter/entry in Seeders |
+| seeder | Idempotent no-op Seeder in `database/seeders`; constructor in providers.DatabaseProviderSet and parameter/entry in Seeders |
 | migration | Versioned SQL file; preserves --notx and installed Atlas hashing behavior |
 
 UoW skeletons leave repositories, operation parameters, domain interfaces and service wiring explicit. `make stubs` includes `uow.stub`, overridable at `stubs/skyrix/uow.stub`.
@@ -348,15 +347,15 @@ UoW skeletons leave repositories, operation parameters, domain interfaces and se
 Domain skeletons contain no invented business operations, HTTP/DB dependencies
 or UnitOfWork contract. Repositories/services start as concrete types: introduce
 meaningful domain interfaces and Wire bindings when defining actual operations.
-Entities are registered for explicit model/schema commands; generation itself
-never applies a schema change or creates a migration. Seeders have no storage
-dependency until you add one. Command factories defer dependencies with
-`console.With`; Template registers DatabaseAll against its existing database graph.
+Entity generation creates only the domain source file. Select models for Atlas
+explicitly in `tools/schemaloader/main.go`; generation never changes the schema. Seeders have no storage
+dependency until you add one. Command factories accept a runner. Providers bind dependencies with `console.With`
+and register DB commands against the existing database graph.
 
 Registrations use Go AST locations, preserving comments and user registrations.
 Supported points are explicit `wire.NewSet(...)` variables, Handlers/Jobs structs
 with `wire.Struct(new(Bundle), "*")`, direct returned slice literals in
-Models/Seeders/All/DatabaseAll, and the existing straight-line jobs registry.
+Seeders/ProvideConsoleCommands/ProvideConsoleDatabaseCommands, and the existing straight-line jobs registry.
 Seeders may already have named parameters. Keyed slice entries, indirect returns,
 custom registry control flow, duplicate imports and ambiguous shapes are rejected
 before publishing any files. Custom projects must provide these Template points;
@@ -393,7 +392,7 @@ and modes and removing only newly created empty directories. External edits
 detected while publishing/rolling back are preserved and reported.
 `make migration` needs no Atlas CLI, account or database: it verifies the
 existing atlas.sum, prepares the new file and atlas.sum in a private copy of
-`migrations/` and publishes both together; a checksum error leaves the project
+`database/migrations/` and publishes both together; a checksum error leaves the project
 unchanged. After writing SQL into the file, run `db migrate:hash`.
 
 ## Integration harness
@@ -425,7 +424,7 @@ Auth lives in the separate local module `gitlab.com/skyrix-lib/auth`, currently
 at `/var/www/skyrix-auth-lib`. Framework has no dependency on it; Auth uses the
 public `logger` and, in Redis adapters only, `engine/redis` packages.
 Template owns configuration sections, provider sets and Wire composition.
-See [Template authentication](template/README.md#authentication).
+See [Template authentication](../framework-template/README.md#authentication).
 
 Use an external workspace rather than changing the checked-in `go.work`:
 
@@ -434,10 +433,14 @@ go 1.27
 
 use (
     /var/www/skyrix-framework
-    /var/www/skyrix-framework/template
+    /var/www/framework-template
     /var/www/skyrix-auth-lib
     /var/www/skyrix-tenant-lib
 )
+
+replace gitlab.com/skyrix-lib/framework v0.0.0 => /var/www/skyrix-framework
+replace gitlab.com/skyrix-lib/auth v0.0.0 => /var/www/skyrix-auth-lib
+replace gitlab.com/skyrix-lib/tenant v0.0.0 => /var/www/skyrix-tenant-lib
 ```
 
 Save it outside the modules, for example `/tmp/skyrix-auth-check/go.work`, and
@@ -446,9 +449,8 @@ from each module separately: framework's `./...` does not include Template or
 Auth. See the Auth README for its API and Redis adapter.
 
 The local `v0.0.0` requirements for Auth/framework are technical placeholders,
-not published releases. Relative `replace` directives support this local layout;
-fixture modules rewrite those paths to absolute paths. `GOWORK=off` with local
-replacements is not evidence of a standalone build from published dependencies.
+not published releases. An external `go.work` resolves these local modules; fixture modules use their own
+external workspaces. This is not evidence of a build from published dependencies.
 No Auth repository or release has been published by this extraction.
 
 ## Local Tenant library
@@ -460,8 +462,8 @@ copy remains in framework). Framework provides the neutral request scope
 request and stores its schema with `scope.WithSchema`. Framework never imports
 Tenant (`TestFrameworkDoesNotImportTenant`). Template does not enable it: its
 default binaries neither require nor import the module. The opt-in wiring is
-shown in [Template tenants](template/README.md#tenants) and tested by the
-[integration harness](#integration-harness) (`integration/testdata/tenant`). Like Auth, `v0.0.0` with a relative `replace` is a local placeholder;
+shown in [Template tenants](../framework-template/README.md#tenants) and tested by the
+[integration harness](#integration-harness) (`integration/testdata/tenant`). Like Auth, `v0.0.0` resolved through the workspace is a local placeholder;
 no repository, release or tag exists yet. Use the external workspace above.
 
 ### Scoped GORM transactions
@@ -521,7 +523,7 @@ Integration tests use only `SKYRIX_TEST_POSTGRES_DSN`, which must identify a
 skip; recording-driver tests do not establish real PostgreSQL pool isolation.
 
 SQL migrations are the basis: the runner (`db migrate`, `migrate:status`,
-`migrate:baseline`) applies the files in `migrations/` and keeps its history in
+`migrate:baseline`) applies the files in `database/migrations/` and keeps its history in
 the database; it needs neither the Atlas CLI nor `atlas.sum`. Two ways create
 migrations in that one directory:
 
@@ -545,9 +547,73 @@ removed on success, error or cancellation. Existing project Atlas configs are
 ignored and preserved; migrate their dev URL to MIGRATIONS_DEV_URL, or invoke
 Atlas directly for custom workflows. `--env` labels the generated environment.
 Atlas CLI must be installed for this command; the default scratch URL also
-requires Docker. Atlas runs on a private copy of `migrations/`: when SQL
+requires Docker. Atlas runs on a private copy of `database/migrations/`: when SQL
 migrations exist, `atlas.sum` is verified first (missing or mismatching
 checksums are errors that ask for an explicit `db migrate:hash`), and
 the new SQL files are published with the updated (or, on an empty directory,
 newly created) `atlas.sum` only when a migration was generated. The runner
 ignores `atlas.sum`.
+
+## Local workspace and separate Template
+
+Template is developed in `/var/www/framework-template`, independently of
+`/var/www/skyrix-framework`. The historical embedded `template/` directory has been removed.
+Generators and integration use only the separate Template repository.
+Local `v0.0.0` requirements are placeholders, not published versions.
+
+Create a workspace outside both repositories, for example `/tmp/skyrix-dev/go.work`:
+
+```go
+go 1.27
+
+use (
+    /var/www/skyrix-framework
+    /var/www/framework-template
+    /var/www/skyrix-framework/integration
+    /var/www/skyrix-auth-lib
+    /var/www/skyrix-tenant-lib
+)
+
+replace gitlab.com/skyrix-lib/framework v0.0.0 => /var/www/skyrix-framework
+replace gitlab.com/skyrix-lib/auth v0.0.0 => /var/www/skyrix-auth-lib
+replace gitlab.com/skyrix-lib/tenant v0.0.0 => /var/www/skyrix-tenant-lib
+```
+
+```sh
+export GOWORK=/tmp/skyrix-dev/go.work
+# Run in Template after providers or dependency signatures change:
+go tool wire gen ./cmd/http ./cmd/cobra ./cmd/worker
+# Run separately in Framework, Template, and framework/integration:
+go test -count=1 ./...
+go vet ./...
+go build ./...
+```
+
+The integration harness uses the sibling `framework-template` by default;
+`SKYRIX_TEMPLATE_DIR` can override that path. Temporary copies get their own
+external workspace. No tool installs dependencies or Atlas on the user's behalf.
+Live PostgreSQL/Redis checks remain opt-in and are deferred until the Menu move.
+
+Registrations belong to `providers/commands.go` and `providers/database.go`.
+Seeder implementations belong to `database/seeders`. SQL migrations, `embed.go`
+and `atlas.sum` belong to `database/migrations`. `db automigrate` and `dbcmd.Models`
+have been removed. Keep `db seed`, the SQL runner, and optional `db migrate:diff`.
+Entities are created only in their domain; select Atlas schema models explicitly
+in `tools/schemaloader/main.go`. No generator changes `wire_gen.go`.
+
+```sh
+cobra make command reconcile_accounts
+cobra make command scan_invoices --db
+cobra make seeder currency_codes
+cobra make migration add_trigger
+cobra db migrate:hash
+cobra db seed
+# Optional, only with an already installed Atlas CLI:
+cobra db migrate:diff create_tables
+```
+
+`make stubs` exports the current command and seeder contracts without overwriting
+existing files. Project overrides remain in `stubs/skyrix`: command factories must
+accept `console.Runner` and export `Run<Type>`; ordinary handlers receive config
+and logger, DB handlers receive `*dbcmd.Deps`. Update older overrides explicitly.
+Ambiguous registration or stale overrides fail without partially publishing files.

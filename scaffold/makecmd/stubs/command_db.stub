@@ -2,17 +2,19 @@ package commands
 
 import (
  "gitlab.com/skyrix-lib/framework/cobra/console"
- "gitlab.com/skyrix-lib/framework/database/dbcmd"
  "github.com/spf13/cobra"
+ "gitlab.com/skyrix-lib/framework/database/dbcmd"
 )
 
-// {{.Type}} uses the existing database graph only when executed.
-func {{.Type}}(deps *console.Graph[*dbcmd.Deps]) *console.Command {
- return &console.Command{
+// {{.Type}} describes metadata; providers supplies its lazy runner.
+func {{.Type}}(run console.Handler) *cobra.Command {
+ return &cobra.Command{
   Use: {{printf "%q" .Use}}, Short: "Implement {{.Type}}", Args: cobra.NoArgs,
-  Run: console.With(deps,func(cmd *cobra.Command,args []string,deps *dbcmd.Deps) error {
-   // Use deps.DB, deps.Logger, deps.Models and deps.Seeders as required.
-   return nil
-  }),
+  RunE: run,
  }
+}
+
+// Run{{.Type}} implements the command with dependencies supplied on execution.
+func Run{{.Type}}(cmd *cobra.Command, args []string, deps *dbcmd.Deps) error {
+ return nil
 }

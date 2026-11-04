@@ -17,7 +17,7 @@ func TestPlatformDriverSelection(t *testing.T) {
 	requireLibrary(t, l.authLib, "gitlab.com/skyrix-lib/auth", "SKYRIX_AUTH_LIB")
 	template := l.template
 	dir := t.TempDir()
-	env := append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=readonly -buildvcs=false", "PLATFORM_FIRST_ENABLED=false", "PLATFORM_SECOND_ENABLED=false")
+	env := append(workspaceEnv(t, l, dir, false), "PLATFORM_FIRST_ENABLED=false", "PLATFORM_SECOND_ENABLED=false")
 	run := func(workdir string, extra []string, name string, args ...string) string {
 		t.Helper()
 		cmd := exec.Command(name, args...)
@@ -48,8 +48,6 @@ func TestPlatformDriverSelection(t *testing.T) {
 		source := string(data)
 		if name == "go.mod" {
 			source = strings.Replace(source, "module gitlab.com/skyrix-lib/template", "module example.com/selection", 1)
-			source = strings.Replace(source, "replace gitlab.com/skyrix-lib/framework => ..", "replace gitlab.com/skyrix-lib/framework => "+l.framework, 1)
-			source = strings.Replace(source, "replace gitlab.com/skyrix-lib/auth => ../../skyrix-auth-lib", "replace gitlab.com/skyrix-lib/auth => "+l.authLib, 1)
 		}
 		write(name, source)
 	}
@@ -72,11 +70,11 @@ import (
  "github.com/goforj/wire"
  "example.com/selection/internal/probe"
  frameworkcobra "gitlab.com/skyrix-lib/framework/cobra"
- "gitlab.com/skyrix-lib/framework/cobra/console"
+ "github.com/spf13/cobra"
  "fmt"
  "gitlab.com/skyrix-lib/framework/kernel"
 )
-type Config struct { Enabled bool ` + "`yaml:\"enabled\"`" + ` }
+type Config struct { Enabled bool ` + "`yaml:\"enabled\" env:\"PLATFORM_{{NAME}}_ENABLED\"`" + ` }
 func NewConfig() *Config { return &Config{Enabled:true} }
 func (c *Config) Validate() error {if c.Enabled{return fmt.Errorf("fixture expects YAML/env override")};return nil}
 type Module struct{}
@@ -88,14 +86,14 @@ func New(cfg *Config)(*Module,error) {
 func (*Module) Name() string {return "{{name}}"}
 func (*Module) Components() []kernel.Component {probe.Components++;return []kernel.Component{component{}}}
 func (*Module) Commands() []frameworkcobra.CommandFactory {
- return []frameworkcobra.CommandFactory{func()*console.Command{return &console.Command{Use:"{{name}}",Short:"Fixture command"}}}
+ return []frameworkcobra.CommandFactory{func()*cobra.Command{return &cobra.Command{Use:"{{name}}",Short:"Fixture command"}}}
 }
 type component struct{}
 func (component) Start(context.Context) error {probe.Started++;return nil}
 func (component) Stop(context.Context) error {return nil}
 `
 	for _, name := range []string{"first", "second"} {
-		write(name+"/platform/module.go", strings.ReplaceAll(driver, "{{name}}", name))
+		write(name+"/platform/module.go", strings.ReplaceAll(strings.ReplaceAll(driver, "{{name}}", name), "{{NAME}}", strings.ToUpper(name)))
 		write(name+"/platform/manifest.yaml", "name: "+name+"\nconfig_key: platform."+name+"\nconfig_example: |\n  enabled: false\n")
 	}
 	write("providers/platform.go", `package providers
@@ -104,13 +102,13 @@ import (
  second "example.com/selection/second/platform"
  frameworkcobra "gitlab.com/skyrix-lib/framework/cobra"
  "gitlab.com/skyrix-lib/framework/kernel"
- "gitlab.com/skyrix-lib/framework/cobra/console"
+ "github.com/spf13/cobra"
 )
 //skyrix:platform example.com/selection/first/platform
 //skyrix:platform example.com/selection/second/platform
 func ProvideFirstPlatform(module *first.Module)(*kernel.Platform,error){return kernel.NewPlatform(module)}
 func ProvideSecondPlatform(module *second.Module)(*kernel.Platform,error){return kernel.NewPlatform(module)}
-func ConsoleCommands() []*console.Command{return frameworkcobra.ModuleCommands(new(first.Module))}
+func ConsoleCommands() []*cobra.Command{return frameworkcobra.ModuleCommands(new(first.Module))}
 `)
 	for _, name := range []string{"first", "second"} {
 		title := strings.ToUpper(name[:1]) + name[1:]
@@ -160,7 +158,7 @@ func main(){
 	if err != nil {
 		t.Fatal(err)
 	}
-	write("providers/auth.go", string(authProviders))
+	write("providers/auth.go", strings.ReplaceAll(string(authProviders), "gitlab.com/skyrix-lib/template", "example.com/selection"))
 	write("cmd/jwt/wire.go", `//go:build wireinject
 package main
 import (
@@ -214,7 +212,7 @@ func main(){
 `)
 	generator := filepath.Join(dir, "platformgen")
 	run(template, nil, "go", "build", "-o", generator, "gitlab.com/skyrix-lib/framework/cmd/platformgen")
-	wire := strings.TrimSpace(run(template, nil, "go", "tool", "-n", "wire"))
+	wire := strings.TrimSpace(run(dir, nil, "go", "tool", "-n", "wire"))
 	generate := func() {
 		run(filepath.Join(dir, "providers"), nil, generator)
 		run(dir, nil, wire, "gen", "./cmd/first", "./cmd/second", "./cmd/jwt")
@@ -268,10 +266,10 @@ func main(){
 	cmd.Dir = dir
 	cmd.Env = append(append([]string{}, env...), invalid...)
 	outputBytes, err := cmd.CombinedOutput()
-	if err == nil || !strings.Contains(string(outputBytes), "config platform.first.enabled") {
+	if err == nil || !strings.Contains(string(outputBytes), "config platform.first:") {
 		t.Fatalf("selected config was not loaded: %v\n%s", err, outputBytes)
 	}
-	// Exercise add/remove/list through console.Command with real manifests. Keep
+	// Exercise add/remove/list through cobra.Command with real manifests. Keep
 	// user-owned config, domains, graph sources and generated Wire files byte-exact.
 	write("config/user.yaml", "platform:\n  second:\n    password: keep-me\n")
 	write("internal/domain/user.go", "package domain\n")
@@ -309,7 +307,7 @@ func main(){
 		}
 	}
 
-	write("third/platform/module.go", strings.ReplaceAll(driver, "{{name}}", "third"))
+	write("third/platform/module.go", strings.ReplaceAll(strings.ReplaceAll(driver, "{{name}}", "third"), "{{NAME}}", "THIRD"))
 	for _, manifest := range []string{
 		"name: third\nconfig_key: platform.third\nconfig_example: '{}'\nruntimes: [http]\n",
 		"name: first\nconfig_key: platform.third\nconfig_example: '{}'\n",

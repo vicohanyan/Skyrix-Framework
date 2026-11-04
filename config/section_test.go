@@ -10,67 +10,62 @@ import (
 )
 
 type options struct {
-	Enabled bool
-	Count   int
-	Label   string
-	Timeout time.Duration
-	Hosts   []string
-	Nested  struct {
-		Password string `secret:"true"`
-		Ports    []int
-	}
-	Hidden struct{ Token string } `secret:"true"`
+	Enabled  bool          `yaml:"enabled" env:"APP_ENABLED"`
+	Count    int           `yaml:"count" env:"APP_COUNT"`
+	Label    string        `yaml:"label" env:"APP_LABEL"`
+	Timeout  time.Duration `yaml:"timeout" env:"APP_TIMEOUT"`
+	Hosts    []string      `yaml:"hosts" env:"APP_HOSTS"`
+	Database struct {
+		Host     string `yaml:"host" env:"HOST"`
+		Password string `yaml:"password" env:"PASSWORD" secret:"true"`
+	} `yaml:"database" env-prefix:"DB_"`
 }
 
-func TestPriorityAndSafe(t *testing.T) {
-	o := options{Enabled: true, Count: 7, Label: "default", Timeout: time.Second}
-	o.Nested.Password = "secret"
-	o.Hidden.Token = "token"
-	l, err := config.New(config.Section{Key: "platform.eventbus", Value: &o})
+func TestYAMLWithEnvironmentSecretsAndOverrides(t *testing.T) {
+	o := options{Count: 1, Label: "default"}
+	loader, err := config.New(config.Section{Key: "app", Value: &o})
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := map[string]string{"PLATFORM_EVENTBUS_ENABLED": "false", "PLATFORM_EVENTBUS_COUNT": "0", "PLATFORM_EVENTBUS_LABEL": "", "PLATFORM_EVENTBUS_TIMEOUT": "3s", "PLATFORM_EVENTBUS_HOSTS": "[a, b]"}
-	err = l.Load(strings.NewReader("platform:\n  eventbus:\n    enabled: true\n    count: 8\n    timeout: 2s\n    nested:\n      ports: [1, 2]\n"), func(k string) (string, bool) { v, ok := env[k]; return v, ok })
+	for k, v := range map[string]string{"APP_ENABLED": "false", "APP_COUNT": "0", "APP_LABEL": "", "APP_TIMEOUT": "3s", "APP_HOSTS": "a,b", "DB_PASSWORD": "gitlab-secret"} {
+		t.Setenv(k, v)
+	}
+	err = loader.Load(strings.NewReader("app:\n  enabled: true\n  count: 8\n  label: production\n  timeout: 2s\n  hosts: [yaml]\n  database:\n    host: postgres\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if o.Enabled || o.Count != 0 || o.Label != "" || o.Timeout != 3*time.Second || len(o.Hosts) != 2 || len(o.Nested.Ports) != 2 {
-		t.Fatalf("unexpected non-secret values")
+	if o.Enabled || o.Count != 0 || o.Label != "" || o.Timeout != 3*time.Second || len(o.Hosts) != 2 || o.Hosts[1] != "b" || o.Database.Host != "postgres" || o.Database.Password != "gitlab-secret" {
+		t.Fatal("YAML/env precedence failed")
 	}
-	output := fmt.Sprint(l.Safe())
-	if strings.Contains(output, "secret") || strings.Contains(output, "token") {
+	if strings.Contains(fmt.Sprint(loader.Safe()), "gitlab-secret") {
 		t.Fatal("secret leaked")
 	}
-	if o.Nested.Password != "secret" || o.Hidden.Token != "token" {
-		t.Fatal("working secrets mutated")
-	}
-	fields := l.Fields()
-	if fields[6].Env != "PLATFORM_EVENTBUS_NESTED_PORTS" {
-		t.Fatalf("metadata: %v", fields)
+	fields := loader.Fields()
+	if fields[6].Env != "DB_PASSWORD" {
+		t.Fatalf("env-prefix metadata: %v", fields)
 	}
 	fields[0].Env = "changed"
-	if l.Fields()[0].Env == "changed" {
-		t.Fatal("metadata aliased")
+	if loader.Fields()[0].Env == "changed" {
+		t.Fatal("metadata aliases working data")
 	}
 }
-func TestYAMLZeroAndIndependent(t *testing.T) {
+
+func TestYAMLZeroValuesAndIndependentTargets(t *testing.T) {
 	a := options{Enabled: true, Count: 4, Label: "old", Timeout: time.Second}
 	b := a
 	x, _ := config.New(config.Section{Key: "app", Value: &a})
 	y, _ := config.New(config.Section{Key: "app", Value: &b})
-	none := func(string) (string, bool) { return "", false }
-	if err := x.Load(strings.NewReader("app: {enabled: false, count: 0, label: '', hosts: [], timeout: 0s}"), none); err != nil {
+	if err := x.Load(strings.NewReader("app: {enabled: false, count: 0, label: '', hosts: [], timeout: 0s}")); err != nil {
 		t.Fatal(err)
 	}
-	if a.Enabled || a.Count != 0 || a.Label != "" || a.Timeout != 0 || !b.Enabled || b.Count != 4 {
-		t.Fatal("precedence/independence")
+	if a.Enabled || a.Count != 0 || a.Label != "" || a.Timeout != 0 || len(a.Hosts) != 0 || !b.Enabled || b.Count != 4 {
+		t.Fatal("zero values or isolation lost")
 	}
-	if err := y.Load(nil, none); err != nil {
+	if err := y.Load(nil); err != nil {
 		t.Fatal(err)
 	}
 	if b.Timeout != time.Second {
-		t.Fatal("default lost")
+		t.Fatal("struct defaults lost")
 	}
 }
 
@@ -79,150 +74,112 @@ type invalid struct {
 }
 
 func (i *invalid) Validate() error { return fmt.Errorf("secret: %s", i.Secret) }
-func TestErrorsAndDisabled(t *testing.T) {
-	for _, source := range []string{"app: {count: leaked-secret}", "app: {nested: {ports: [leaked-secret]}}", "app: {count: 1, count: 2}"} {
+
+func TestErrorsDoNotExposeValuesAndUnselectedSectionsAreIgnored(t *testing.T) {
+	for _, source := range []string{"app: {count: leaked-secret}", "app: {count: 1, count: 2}", "app: [leaked-secret"} {
 		var o options
 		l, _ := config.New(config.Section{Key: "app", Value: &o})
-		err := l.Load(strings.NewReader(source), func(string) (string, bool) { return "", false })
-		if err == nil || strings.Contains(err.Error(), "leaked-secret") || !strings.Contains(err.Error(), "app") {
+		err := l.Load(strings.NewReader(source))
+		if err == nil || strings.Contains(err.Error(), "leaked-secret") {
 			t.Fatalf("unsafe/missing error: %v", err)
 		}
 	}
-	var o options
-	l, _ := config.New(config.Section{Key: "app", Value: &o})
-	err := l.Load(nil, func(k string) (string, bool) { return "leaked-secret", k == "APP_COUNT" })
-	if err == nil || !strings.Contains(err.Error(), "app.count") || strings.Contains(err.Error(), "leaked-secret") {
-		t.Fatal(err)
-	}
+	t.Run("environment", func(t *testing.T) {
+		t.Setenv("APP_COUNT", "leaked-secret")
+		var o options
+		l, _ := config.New(config.Section{Key: "app", Value: &o})
+		err := l.Load(nil)
+		if err == nil || strings.Contains(err.Error(), "leaked-secret") {
+			t.Fatal(err)
+		}
+	})
 	bad := invalid{Secret: "leaked-secret"}
-	l, _ = config.New(config.Section{Key: "app", Value: &bad})
-	err = l.Load(nil, nil)
-	if err == nil || strings.Contains(err.Error(), "leaked-secret") {
+	l, _ := config.New(config.Section{Key: "app", Value: &bad})
+	if err := l.Load(nil); err == nil || strings.Contains(err.Error(), bad.Secret) {
 		t.Fatal(err)
 	}
+	var o options
 	l, _ = config.New(config.Section{Key: "app", Value: &o})
-	if err := l.Load(strings.NewReader("redis: {port: invalid}\nauth: {secret: null}\napp: {count: 3}"), func(string) (string, bool) { return "", false }); err != nil {
-		t.Fatal(err)
+	if err := l.Load(strings.NewReader("redis: {port: invalid}\napp: {count: 3}")); err != nil || o.Count != 3 {
+		t.Fatalf("selected section: %v", err)
 	}
 }
-func TestConflicts(t *testing.T) {
-	type collision struct {
-		A_B string
-		A   struct{ B string }
+
+func TestCleanenvDefaultsRequiredAndCustomSeparators(t *testing.T) {
+	var o struct {
+		Port     int      `yaml:"port" env:"SERVICE_PORT" env-default:"8080"`
+		Hosts    []string `yaml:"hosts" env:"SERVICE_HOSTS" env-separator:";"`
+		Password string   `yaml:"password" env:"SERVICE_PASSWORD" env-required:"true" secret:"true"`
 	}
-	var c collision
-	if _, err := config.New(config.Section{Key: "app", Value: &c}); err == nil {
-		t.Fatal("env collision accepted")
+	l, _ := config.New(config.Section{Key: "service", Value: &o})
+	if err := l.Load(nil); err == nil {
+		t.Fatal("missing required value accepted")
 	}
-	var a, b options
+	t.Setenv("SERVICE_PASSWORD", "secret")
+	t.Setenv("SERVICE_HOSTS", "one;two")
+	if err := l.Load(nil); err != nil {
+		t.Fatal(err)
+	}
+	if o.Port != 8080 || len(o.Hosts) != 2 || o.Hosts[1] != "two" {
+		t.Fatal("cleanenv tags not applied")
+	}
+	if l.Fields()[0].Default != "8080" {
+		t.Fatal("default metadata")
+	}
+}
+
+func TestMetadataSnapshotAndRedaction(t *testing.T) {
+	type settings struct {
+		Count    int    `env:"META_COUNT" env-default:"12"`
+		Password string `env:"META_PASSWORD" env-default:"secret-tag" secret:"true"`
+		Public   []string
+		Tokens   []string               `secret:"true"`
+		Hidden   struct{ Token string } `secret:"true"`
+	}
+	s := settings{Public: []string{"first"}, Tokens: []string{"sensitive-token"}}
+	s.Hidden.Token = "sensitive-nested"
+	path := []string{"CUSTOM"}
+	l, err := config.New(config.Section{Key: "app", Value: &s, YAMLPath: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path[0] = "changed"
+	before := fmt.Sprint(l.Sections())
+	if strings.Contains(before, "secret-tag") {
+		t.Fatal("default secret leaked")
+	}
+	t.Setenv("META_COUNT", "21")
+	if err := l.Load(strings.NewReader("CUSTOM: {count: 99}")); err != nil {
+		t.Fatal(err)
+	}
+	if s.Count != 21 || fmt.Sprint(l.Sections()) != before {
+		t.Fatal("metadata changed after load")
+	}
+	m := l.Sections()
+	m[0].YAMLPath[0] = "changed"
+	m[0].Fields[0].Env = "changed"
+	if l.Sections()[0].YAMLPath[0] != "CUSTOM" || l.Fields()[0].Env != "META_COUNT" {
+		t.Fatal("metadata aliases")
+	}
+	snapshot := l.Safe()
+	if text := fmt.Sprint(snapshot); strings.Contains(text, "sensitive-") || strings.Contains(text, "secret-tag") {
+		t.Fatal("snapshot leaked secrets")
+	}
+	snapshot["app"].(map[string]any)["public"].([]any)[0] = "changed"
+	if s.Public[0] != "first" {
+		t.Fatal("snapshot mutated target")
+	}
+}
+
+func TestInvalidSections(t *testing.T) {
+	var a, b struct{ Name string }
 	for _, key := range []string{"app", "app.child"} {
 		if _, err := config.New(config.Section{Key: "app", Value: &a}, config.Section{Key: key, Value: &b}); err == nil {
 			t.Fatal("overlap accepted")
 		}
 	}
-}
-func TestSafeListsAndSnapshot(t *testing.T) {
-	type settings struct {
-		Tokens []string `secret:"true"`
-		Nested struct {
-			Password string `secret:"true"`
-			Public   []string
-		}
-	}
-	o := settings{Tokens: []string{"sensitive-token"}}
-	o.Nested.Password = "sensitive-password"
-	o.Nested.Public = []string{"first"}
-	l, err := config.New(config.Section{Key: "app", Value: &o})
-	if err != nil {
-		t.Fatal(err)
-	}
-	snapshot := l.Safe()
-	text := fmt.Sprint(snapshot)
-	if strings.Contains(text, "sensitive-") {
-		t.Fatal("secret list or nested secret leaked")
-	}
-	nested := snapshot["app"].(map[string]any)["nested"].(map[string]any)
-	nested["public"].([]any)[0] = "changed"
-	if o.Nested.Public[0] != "first" || len(o.Tokens) != 1 {
-		t.Fatal("snapshot changed live data")
-	}
-	if !l.Fields()[0].Secret || !l.Fields()[1].Secret {
-		t.Fatal("missing secret metadata")
-	}
-}
-
-func TestMalformedYAMLAndSchemaErrorsAreSafe(t *testing.T) {
-	var o options
-	l, _ := config.New(config.Section{Key: "app", Value: &o})
-	err := l.Load(strings.NewReader("app: [sensitive-value"), nil)
-	if err == nil || strings.Contains(err.Error(), "sensitive-value") {
-		t.Fatal(err)
-	}
-	type names struct{ Name string }
-	var a, b names
-	if _, err := config.New(config.Section{Key: "platform.eventbus", Value: &a}, config.Section{Key: "platform_eventbus", Value: &b}); err == nil {
-		t.Fatal("section env collision accepted")
-	}
-	var nilTarget *names
+	var nilTarget *options
 	if _, err := config.New(config.Section{Key: "app", Value: nilTarget}); err == nil {
 		t.Fatal("nil target accepted")
-	}
-}
-
-func TestSectionMetadataIsDetached(t *testing.T) {
-	var o options
-	path := []string{"legacy"}
-	l, err := config.New(config.Section{Key: "platform.eventbus", Value: &o, YAMLPath: path})
-	if err != nil {
-		t.Fatal(err)
-	}
-	path[0] = "changed"
-	metadata := l.Sections()
-	if metadata[0].Key != "platform.eventbus" || metadata[0].EnvPrefix != "PLATFORM_EVENTBUS_" || metadata[0].YAMLPath[0] != "legacy" {
-		t.Fatal("invalid metadata")
-	}
-	metadata[0].YAMLPath[0] = "changed"
-	metadata[0].Fields[0].Env = "changed"
-	if l.Sections()[0].YAMLPath[0] != "legacy" || l.Fields()[0].Env == "changed" {
-		t.Fatal("metadata aliased")
-	}
-	type recursive []recursive
-	var r struct{ Values recursive }
-	if _, err := config.New(config.Section{Key: "app", Value: &r}); err == nil {
-		t.Fatal("recursive slice accepted")
-	}
-}
-
-func TestMetadataDefaultsSurviveLoad(t *testing.T) {
-	type settings struct {
-		Count    int           `env:"OLD_COUNT" env-default:"12"`
-		Password string        `env:"OLD_PASSWORD" env-default:"secret-tag" secret:"true"`
-		Timeout  time.Duration `env:"OLD_TIMEOUT" env-default:"3s"`
-	}
-	s := settings{Count: 4, Password: "secret-initial"}
-	l, err := config.New(config.Section{Key: "app", Value: &s, LegacyEnv: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if s.Count != 4 || s.Timeout != 0 {
-		t.Fatal("metadata mutated target")
-	}
-	before := fmt.Sprint(l.Sections())
-	if strings.Contains(before, "secret-tag") || strings.Contains(before, "secret-initial") {
-		t.Fatal("default leaked")
-	}
-	if err := l.Load(strings.NewReader("app: {Count: 99, count: 99}"), func(k string) (string, bool) { return "21", k == "OLD_COUNT" }); err != nil {
-		t.Fatal(err)
-	}
-	if s.Count != 21 || fmt.Sprint(l.Sections()) != before {
-		t.Fatal("metadata contains loaded values")
-	}
-	fields := l.Fields()
-	if fields[0].Default != "12" || fields[1].Default != "[REDACTED]" || fields[2].Default != "3s" {
-		t.Fatalf("defaults: %v", fields)
-	}
-	fields[0].Default = "changed"
-	if l.Fields()[0].Default != "12" {
-		t.Fatal("default snapshot aliased")
 	}
 }

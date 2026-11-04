@@ -72,24 +72,6 @@ func boundScope(db *gorm.DB) *transactionScope {
 	return s
 }
 
-// SetSchema only accepts the already selected scope of a managed transaction.
-// Deprecated: use WithinTransaction, which checks SET LOCAL before the callback.
-// This method never issues session-level SET and cannot switch transaction scope.
-func (d *Database) SetSchema(db *gorm.DB, schema string) error {
-	bound := boundScope(db)
-	if bound == nil {
-		return ErrTransactionRequired
-	}
-	selected, err := selectedScope(scope.WithSchema(db.Statement.Context, schema), d.Main())
-	if err != nil {
-		return err
-	}
-	if selected != *bound {
-		return ErrScopeMismatch
-	}
-	return setLocalSchema(db, selected)
-}
-
 func setLocalSchema(db *gorm.DB, s transactionScope) error {
 	path := quoteIdent(s.schema)
 	if s.main != s.schema {

@@ -1,102 +1,6 @@
--- go.mod --
-module code.example.dev/finance/ledger/v2
+-- database/migrations/20261103102030_custom_trigger.sql --
 
-go 1.27
-
--- internal/commands/commands.go --
-// User console descriptions.
-package commands
-
-import (
-	"gitlab.com/skyrix-lib/framework/cobra/console"
-	"gitlab.com/skyrix-lib/framework/database/dbcmd"
-)
-
-type Deps struct{}
-
-func Hello(deps *console.Graph[*Deps]) *console.Command { return &console.Command{Use: "hello"} }
-func All(app *console.Graph[*Deps]) []*console.Command {
-	return []*console.Command{Hello(app), /* keep command */
-		ReconcileAccounts(app),
-	}
-}
-func DatabaseAll(database *console.Graph[*dbcmd.Deps]) []*console.Command {
-	return []*console.Command{
-		ScanInvoices(database),
-	}
-}
-
--- internal/commands/reconcileAccountsCommand.go --
-package commands
-
-import (
-	"github.com/spf13/cobra"
-	"gitlab.com/skyrix-lib/framework/cobra/console"
-)
-
-// ReconcileAccounts describes metadata without building the application graph.
-func ReconcileAccounts(deps *console.Graph[*Deps]) *console.Command {
-	return &console.Command{
-		Use: "reconcile-accounts", Short: "Implement ReconcileAccounts", Args: cobra.NoArgs,
-		Run: console.With(deps, func(cmd *cobra.Command, args []string, deps *Deps) error {
-			// Add command behavior here. Dependencies are available only on execution.
-			return nil
-		}),
-	}
-}
-
--- internal/commands/scanInvoicesCommand.go --
-package commands
-
-import (
-	"github.com/spf13/cobra"
-	"gitlab.com/skyrix-lib/framework/cobra/console"
-	"gitlab.com/skyrix-lib/framework/database/dbcmd"
-)
-
-// ScanInvoices uses the existing database graph only when executed.
-func ScanInvoices(deps *console.Graph[*dbcmd.Deps]) *console.Command {
-	return &console.Command{
-		Use: "scan-invoices", Short: "Implement ScanInvoices", Args: cobra.NoArgs,
-		Run: console.With(deps, func(cmd *cobra.Command, args []string, deps *dbcmd.Deps) error {
-			// Use deps.DB, deps.Logger, deps.Models and deps.Seeders as required.
-			return nil
-		}),
-	}
-}
-
--- internal/database/database.go --
-package database
-
-import salesorderflowEntity "code.example.dev/finance/ledger/v2/internal/domain/sales/orderflow/entity"
-
-import (
-	customSeeds "code.example.dev/finance/ledger/v2/internal/database/seeders"
-	"github.com/goforj/wire"
-	"gitlab.com/skyrix-lib/framework/database/dbcmd"
-)
-
-type UserModel struct{}
-
-// Models keeps explicit user registrations.
-func Models() dbcmd.Models {
-	return dbcmd.Models{&UserModel{}, /* user model */
-		&salesorderflowEntity.LineItem{},
-	}
-}
-func Seeders(user *customSeeds.UserSeeder /* comma, in a comment */, currencyCodes *customSeeds.CurrencyCodesSeeder, taxCodes *customSeeds.TaxCodesSeeder) dbcmd.Seeders {
-	return dbcmd.Seeders{user, /* user seeder */
-		currencyCodes,
-		taxCodes,
-	}
-}
-
-var ProviderSet = wire.NewSet(Models, Seeders, customSeeds.NewUserSeeder,
-	customSeeds.NewCurrencyCodesSeeder,
-	customSeeds.NewTaxCodesSeeder,
-)
-
--- internal/database/seeders/currencyCodesSeeder.go --
+-- database/seeders/currencyCodesSeeder.go --
 package seeders
 
 import (
@@ -108,12 +12,12 @@ type CurrencyCodesSeeder struct{}
 
 func NewCurrencyCodesSeeder() *CurrencyCodesSeeder { return &CurrencyCodesSeeder{} }
 
-// Seed must remain idempotent: it runs for db seed and db automigrate.
+// Seed must remain idempotent: it runs for db seed.
 func (*CurrencyCodesSeeder) Seed(ctx context.Context) error { return nil }
 
 var _ dbcmd.Seeder = (*CurrencyCodesSeeder)(nil)
 
--- internal/database/seeders/taxCodesSeeder.go --
+-- database/seeders/taxCodesSeeder.go --
 package seeders
 
 import (
@@ -125,15 +29,65 @@ type TaxCodesSeeder struct{}
 
 func NewTaxCodesSeeder() *TaxCodesSeeder { return &TaxCodesSeeder{} }
 
-// Seed must remain idempotent: it runs for db seed and db automigrate.
+// Seed must remain idempotent: it runs for db seed.
 func (*TaxCodesSeeder) Seed(ctx context.Context) error { return nil }
 
 var _ dbcmd.Seeder = (*TaxCodesSeeder)(nil)
 
--- internal/database/seeders/user.go --
+-- database/seeders/user.go --
 package seeders
 type UserSeeder struct{}
 func NewUserSeeder()*UserSeeder{return &UserSeeder{}}
+
+-- go.mod --
+module code.example.dev/finance/ledger/v2
+
+go 1.27
+
+-- internal/commands/reconcileAccountsCommand.go --
+package commands
+
+import (
+	"code.example.dev/finance/ledger/v2/internal/config"
+	"github.com/spf13/cobra"
+	"gitlab.com/skyrix-lib/framework/cobra/console"
+	"gitlab.com/skyrix-lib/framework/logger"
+)
+
+// ReconcileAccounts describes metadata; providers supplies its lazy runner.
+func ReconcileAccounts(run console.Handler) *cobra.Command {
+	return &cobra.Command{
+		Use: "reconcile-accounts", Short: "Implement ReconcileAccounts", Args: cobra.NoArgs,
+		RunE: run,
+	}
+}
+
+// RunReconcileAccounts implements the command with dependencies supplied on execution.
+func RunReconcileAccounts(cmd *cobra.Command, args []string, cfg *config.Config, log logger.Interface) error {
+	return nil
+}
+
+-- internal/commands/scanInvoicesCommand.go --
+package commands
+
+import (
+	"github.com/spf13/cobra"
+	"gitlab.com/skyrix-lib/framework/cobra/console"
+	"gitlab.com/skyrix-lib/framework/database/dbcmd"
+)
+
+// ScanInvoices describes metadata; providers supplies its lazy runner.
+func ScanInvoices(run console.Handler) *cobra.Command {
+	return &cobra.Command{
+		Use: "scan-invoices", Short: "Implement ScanInvoices", Args: cobra.NoArgs,
+		RunE: run,
+	}
+}
+
+// RunScanInvoices implements the command with dependencies supplied on execution.
+func RunScanInvoices(cmd *cobra.Command, args []string, deps *dbcmd.Deps) error {
+	return nil
+}
 
 -- internal/domain/sales/orderflow/dto/doc.go --
 // Package dto contains OrderFlow domain components.
@@ -271,7 +225,61 @@ func (*RefreshBalancesJob) Execute(ctx context.Context, args map[string]any) err
 
 var _ enginejobs.Job = (*RefreshBalancesJob)(nil)
 
--- migrations/20261103102030_custom_trigger.sql --
+-- providers/commands.go --
+// User console commands.
+package providers
+
+import commands "code.example.dev/finance/ledger/v2/internal/commands"
+
+import (
+	"code.example.dev/finance/ledger/v2/internal/config"
+	"github.com/spf13/cobra"
+	"gitlab.com/skyrix-lib/framework/cobra/console"
+	"gitlab.com/skyrix-lib/framework/database/dbcmd"
+	"gitlab.com/skyrix-lib/framework/logger"
+)
+
+type CommandDeps struct {
+	Config *config.Config
+	Logger logger.Interface
+}
+
+func Hello(deps *console.Graph[*CommandDeps]) *cobra.Command { return &cobra.Command{Use: "hello"} }
+func ProvideConsoleCommands(app *console.Graph[*CommandDeps]) []*cobra.Command {
+	return []*cobra.Command{Hello(app), /* keep command */
+		commands.ReconcileAccounts(console.With(app, func(cmd *cobra.Command, args []string, deps *CommandDeps) error {
+			return commands.RunReconcileAccounts(cmd, args, deps.Config, deps.Logger)
+		})),
+	}
+}
+func ProvideConsoleDatabaseCommands(database *console.Graph[*dbcmd.Deps]) []*cobra.Command {
+	return []*cobra.Command{
+		commands.ScanInvoices(console.With(database, func(cmd *cobra.Command, args []string, deps *dbcmd.Deps) error {
+			return commands.RunScanInvoices(cmd, args, deps)
+		})),
+	}
+}
+
+-- providers/database.go --
+package providers
+
+import (
+	customSeeds "code.example.dev/finance/ledger/v2/database/seeders"
+	"github.com/goforj/wire"
+	"gitlab.com/skyrix-lib/framework/database/dbcmd"
+)
+
+func Seeders(user *customSeeds.UserSeeder /* comma, in a comment */, currencyCodes *customSeeds.CurrencyCodesSeeder, taxCodes *customSeeds.TaxCodesSeeder) dbcmd.Seeders {
+	return dbcmd.Seeders{user, /* user seeder */
+		currencyCodes,
+		taxCodes,
+	}
+}
+
+var DatabaseProviderSet = wire.NewSet(Seeders, customSeeds.NewUserSeeder,
+	customSeeds.NewCurrencyCodesSeeder,
+	customSeeds.NewTaxCodesSeeder,
+)
 
 -- providers/domains.go --
 // User domain composition.

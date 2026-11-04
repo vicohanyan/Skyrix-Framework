@@ -2,7 +2,7 @@
 // db migrate, db migrate:status, db migrate:baseline, db migrate:hash and
 // db migrate:diff.
 //
-// The commands are standalone (console.NeedsNothing): they load their
+// The commands are standalone: they load their
 // settings and connect to the database only when they run, so describing
 // them and showing help never opens a connection. Only db migrate:diff needs
 // the Atlas CLI; db migrate:hash needs neither the CLI nor the settings.
@@ -25,7 +25,6 @@ import (
 	"gitlab.com/skyrix-lib/framework/engine/postgres"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 // Settings are what the migration commands need from the application.
@@ -51,7 +50,7 @@ type SettingsLoader func() (Settings, func(), error)
 type Commands struct {
 	LoadSettings SettingsLoader
 	Source       fs.FS
-	// ProjectRoot contains migrations/ and tools/schemaloader/.
+	// ProjectRoot contains database/migrations/ and tools/schemaloader/.
 	ProjectRoot string
 	// Options are extra runner options, such as migrate.WithTable.
 	Options []migrate.Option
@@ -63,17 +62,15 @@ func New(load SettingsLoader, source fs.FS) *Commands {
 }
 
 // NewDBGroup returns the "db" command group with subcommands.
-func NewDBGroup(subcommands ...*console.Command) *console.Command {
-	return &console.Command{
-		Use:      "db",
-		Short:    "Manage the application database",
-		Commands: subcommands,
-	}
+func NewDBGroup(subcommands ...*cobra.Command) *cobra.Command {
+	group := &cobra.Command{Use: "db", Short: "Manage the application database"}
+	group.AddCommand(subcommands...)
+	return group
 }
 
 // Subcommands returns the migration subcommands of the db group.
-func (c *Commands) Subcommands() []*console.Command {
-	return []*console.Command{
+func (c *Commands) Subcommands() []*cobra.Command {
+	return []*cobra.Command{
 		c.migrateCommand(),
 		c.statusCommand(),
 		c.baselineCommand(),
@@ -83,7 +80,7 @@ func (c *Commands) Subcommands() []*console.Command {
 }
 
 // Command returns a db group that contains only the migration commands.
-func (c *Commands) Command() *console.Command {
+func (c *Commands) Command() *cobra.Command {
 	return NewDBGroup(c.Subcommands()...)
 }
 
@@ -130,8 +127,8 @@ func (c *Commands) atlasOptions(env string) (atlas.DiffOptions, error) {
 	return atlas.DiffOptions{Env: env, DevURL: settings.AtlasDevURL}, nil
 }
 
-func (c *Commands) migrateCommand() *console.Command {
-	return &console.Command{
+func (c *Commands) migrateCommand() *cobra.Command {
+	command := &cobra.Command{
 		Use:   "migrate",
 		Short: "Apply pending SQL migrations",
 		Long: `Apply pending SQL migrations from the migrations directory in version order.
@@ -147,13 +144,7 @@ Migrations are forward-only. Each migration runs in its own transaction, except
   cobra db migrate --steps 1
   cobra db migrate --to 20261102135250`,
 		Args: cobra.NoArgs,
-		Flags: func(flags *pflag.FlagSet) {
-			flags.Int("steps", 0, "apply only the next N pending migrations")
-			flags.String("to", "", "apply pending migrations up to and including this version (YYYYMMDDHHMMSS)")
-			flags.Bool("allow-modified", false,
-				"apply pending migrations even though applied migration files were modified (the changes are NOT re-applied)")
-		},
-		Run: console.Standalone(func(cmd *cobra.Command, _ []string) error {
+		RunE: console.Standalone(func(cmd *cobra.Command, _ []string) error {
 			steps, _ := cmd.Flags().GetInt("steps")
 			to, _ := cmd.Flags().GetString("to")
 			allowModified, _ := cmd.Flags().GetBool("allow-modified")
@@ -198,14 +189,21 @@ Migrations are forward-only. Each migration runs in its own transaction, except
 			return nil
 		}),
 	}
+
+	command.Flags().Int("steps", 0, "apply only the next N pending migrations")
+	command.Flags().String("to", "", "apply pending migrations up to and including this version (YYYYMMDDHHMMSS)")
+	command.Flags().Bool("allow-modified", false,
+		"apply pending migrations even though applied migration files were modified (the changes are NOT re-applied)")
+
+	return command
 }
 
-func (c *Commands) statusCommand() *console.Command {
-	return &console.Command{
+func (c *Commands) statusCommand() *cobra.Command {
+	return &cobra.Command{
 		Use:   "migrate:status",
 		Short: "Show the state of SQL migrations",
 		Args:  cobra.NoArgs,
-		Run: console.Standalone(func(cmd *cobra.Command, _ []string) error {
+		RunE: console.Standalone(func(cmd *cobra.Command, _ []string) error {
 			runner, closeDB, err := c.Open(cmd.Context())
 			if err != nil {
 				return err
@@ -221,15 +219,15 @@ func (c *Commands) statusCommand() *console.Command {
 	}
 }
 
-func (c *Commands) baselineCommand() *console.Command {
-	return &console.Command{
+func (c *Commands) baselineCommand() *cobra.Command {
+	return &cobra.Command{
 		Use:   "migrate:baseline <version>",
 		Short: "Mark migrations up to a version as applied without running them",
 		Long: `Record every pending migration up to and including <version> as applied
 without executing it. Use it once to adopt an existing database whose schema
 already matches those migrations.`,
 		Args: cobra.ExactArgs(1),
-		Run: console.Standalone(func(cmd *cobra.Command, args []string) error {
+		RunE: console.Standalone(func(cmd *cobra.Command, args []string) error {
 			runner, closeDB, err := c.Open(cmd.Context())
 			if err != nil {
 				return err
@@ -249,11 +247,11 @@ already matches those migrations.`,
 	}
 }
 
-func (c *Commands) hashCommand() *console.Command {
-	return &console.Command{
+func (c *Commands) hashCommand() *cobra.Command {
+	return &cobra.Command{
 		Use:   "migrate:hash",
-		Short: "Recompute migrations/atlas.sum after editing SQL migrations",
-		Long: `Recompute migrations/atlas.sum from the SQL files in migrations/ as they are
+		Short: "Recompute database/migrations/atlas.sum after editing SQL migrations",
+		Long: `Recompute database/migrations/atlas.sum from the SQL files in database/migrations/ as they are
 now, for example after writing SQL into a file created by "make migration" or
 after editing a migration that was not applied yet. SQL files are not changed.
 
@@ -265,7 +263,7 @@ directory, not the database: db migrate keeps its own history of applied
 migrations and does not read atlas.sum. Commit the SQL files and atlas.sum
 together.`,
 		Args: cobra.NoArgs,
-		Run: console.Standalone(func(cmd *cobra.Command, _ []string) error {
+		RunE: console.Standalone(func(cmd *cobra.Command, _ []string) error {
 			workspace, err := atlas.OpenWorkspace(c.ProjectRoot)
 			if err != nil {
 				return err
@@ -289,8 +287,8 @@ together.`,
 	}
 }
 
-func (c *Commands) diffCommand() *console.Command {
-	return &console.Command{
+func (c *Commands) diffCommand() *cobra.Command {
+	command := &cobra.Command{
 		Use:   "migrate:diff <name>",
 		Short: "Generate a SQL migration from the GORM models (optional, needs the Atlas CLI)",
 		Long: `Generate a SQL migration from tools/schemaloader and the migrations directory.
@@ -301,18 +299,15 @@ atlas.hcl is required. MIGRATIONS_DEV_URL in Template can override the disposabl
 PostgreSQL development database. The application database is never used as scratch
 storage. --env overrides the generated environment label (APP_ENV in Template).
 
-Atlas works on a private copy of migrations/. When SQL migrations exist,
-migrations/atlas.sum must be present and match them, otherwise nothing is
+Atlas works on a private copy of database/migrations/. When SQL migrations exist,
+database/migrations/atlas.sum must be present and match them, otherwise nothing is
 generated and the command asks for an explicit "db migrate:hash". New
 migration files and the
 updated atlas.sum (created on the first migration) are written to the project
 together; when there are no schema changes, or on any error, the project is
 left untouched. Commit the SQL files and atlas.sum together.`,
 		Args: cobra.ExactArgs(1),
-		Flags: func(flags *pflag.FlagSet) {
-			flags.String("env", "", "Generated Atlas environment label (default: application settings)")
-		},
-		Run: console.Standalone(func(cmd *cobra.Command, args []string) error {
+		RunE: console.Standalone(func(cmd *cobra.Command, args []string) error {
 			env, _ := cmd.Flags().GetString("env")
 			name := args[0]
 			if err := migrate.ValidateName(name); err != nil {
@@ -365,6 +360,10 @@ left untouched. Commit the SQL files and atlas.sum together.`,
 			return nil
 		}),
 	}
+
+	command.Flags().String("env", "", "Generated Atlas environment label (default: application settings)")
+
+	return command
 }
 
 func writeStatus(out io.Writer, status migrate.Status) error {

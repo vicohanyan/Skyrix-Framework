@@ -11,7 +11,6 @@ import (
 	"testing/fstest"
 	"time"
 
-	"gitlab.com/skyrix-lib/framework/cobra/console"
 	"gitlab.com/skyrix-lib/framework/database/migrate"
 	"gitlab.com/skyrix-lib/framework/database/migrate/atlas"
 	"gitlab.com/skyrix-lib/framework/database/migrate/atlas/atlastest"
@@ -40,7 +39,7 @@ func TestCommandsValidateFlagsBeforeLoadingSettings(t *testing.T) {
 		{[]string{"__complete", "migrate:"}, ""},
 		{[]string{"completion", "bash"}, ""},
 	} {
-		root := commands.Command().Cobra()
+		root := commands.Command()
 		var output strings.Builder
 		root.SetOut(&output)
 		root.SetErr(&output)
@@ -59,11 +58,6 @@ func TestCommandsValidateFlagsBeforeLoadingSettings(t *testing.T) {
 	}
 	if loads != 0 {
 		t.Fatalf("settings loaded %d times, want 0", loads)
-	}
-	for _, sub := range commands.Subcommands() {
-		if sub.Needs() != console.NeedsNothing {
-			t.Fatalf("db %s needs %v, want standalone", sub.Name(), sub.Needs())
-		}
 	}
 }
 
@@ -132,7 +126,7 @@ func diffCommands(root string, loads, closes *int) *Commands {
 }
 
 func runDiff(commands *Commands, args ...string) (string, error) {
-	command := commands.Command().Cobra()
+	command := commands.Command()
 	var output strings.Builder
 	command.SetOut(&output)
 	command.SetErr(&output)
@@ -171,7 +165,7 @@ func TestDiffLoadsConfiguredDevURLWithExplicitEnv(t *testing.T) {
 	}
 	// Atlas writes into a private copy, never into the project directory.
 	if !strings.Contains(string(config), `env "production"`) || !strings.Contains(string(config), "docker://postgres/18/configured") ||
-		strings.Contains(string(config), filepath.Join(root, "migrations")) {
+		strings.Contains(string(config), filepath.Join(root, "database/migrations")) {
 		t.Fatal(string(config))
 	}
 	calls := atlastest.Invocations(t, log)
@@ -181,7 +175,7 @@ func TestDiffLoadsConfiguredDevURLWithExplicitEnv(t *testing.T) {
 	if loads != 1 || closes != 1 {
 		t.Fatalf("loads=%d closes=%d", loads, closes)
 	}
-	if !strings.Contains(output, "created migrations/20261103000000_add_field.sql") {
+	if !strings.Contains(output, "created database/migrations/20261103000000_add_field.sql") {
 		t.Fatal(output)
 	}
 }
@@ -189,7 +183,7 @@ func TestDiffLoadsConfiguredDevURLWithExplicitEnv(t *testing.T) {
 func TestDiffFirstAndNextGeneration(t *testing.T) {
 	_, log := atlastest.Install(t)
 	root := t.TempDir()
-	writeProjectFile(t, root, "migrations/README.md", "user placeholder")
+	writeProjectFile(t, root, "database/migrations/README.md", "user placeholder")
 	loads, closes := 0, 0
 	commands := diffCommands(root, &loads, &closes)
 
@@ -208,7 +202,7 @@ func TestDiffFirstAndNextGeneration(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := atlastest.Snapshot(t, root)
-	if first["migrations/20261103000000_create_a.sql"] == "" || !strings.Contains(first["migrations/atlas.sum"], "20261103000000_create_a.sql h1:") {
+	if first["database/migrations/20261103000000_create_a.sql"] == "" || !strings.Contains(first["database/migrations/atlas.sum"], "20261103000000_create_a.sql h1:") {
 		t.Fatalf("after first generation: %v", first)
 	}
 
@@ -225,7 +219,7 @@ func TestDiffFirstAndNextGeneration(t *testing.T) {
 		t.Fatalf("second generation calls = %q", next)
 	}
 	second := atlastest.Snapshot(t, root)
-	if second["migrations/atlas.sum"] == first["migrations/atlas.sum"] || second["migrations/README.md"] != "user placeholder" {
+	if second["database/migrations/atlas.sum"] == first["database/migrations/atlas.sum"] || second["database/migrations/README.md"] != "user placeholder" {
 		t.Fatalf("after second generation: %v", second)
 	}
 }
@@ -242,15 +236,15 @@ func TestDiffWritesNothingOnError(t *testing.T) {
 		{
 			name: "checksum missing",
 			setup: func(t *testing.T, root string) {
-				writeProjectFile(t, root, "migrations/20261101000000_existing.sql", "SELECT 1;")
+				writeProjectFile(t, root, "database/migrations/20261101000000_existing.sql", "SELECT 1;")
 			},
 			want: `"db migrate:hash"`,
 		},
 		{
 			name: "checksum mismatch",
 			setup: func(t *testing.T, root string) {
-				writeProjectFile(t, root, "migrations/20261101000000_existing.sql", "SELECT 1;")
-				writeProjectFile(t, root, "migrations/atlas.sum", "h1:stale\n")
+				writeProjectFile(t, root, "database/migrations/20261101000000_existing.sql", "SELECT 1;")
+				writeProjectFile(t, root, "database/migrations/atlas.sum", "h1:stale\n")
 			},
 			want: "does not match",
 		},
@@ -283,7 +277,7 @@ func TestDiffWritesNothingOnError(t *testing.T) {
 				t.Fatal(err)
 			}
 			root := t.TempDir()
-			writeProjectFile(t, root, "migrations/README.md", "user placeholder")
+			writeProjectFile(t, root, "database/migrations/README.md", "user placeholder")
 			if test.setup != nil {
 				test.setup(t, root)
 			}
@@ -335,7 +329,7 @@ func hashCommands(t *testing.T, root string) *Commands {
 }
 
 func runHash(commands *Commands) (string, error) {
-	command := commands.Command().Cobra()
+	command := commands.Command()
 	var output strings.Builder
 	command.SetOut(&output)
 	command.SetErr(&output)
@@ -349,25 +343,25 @@ func runHash(commands *Commands) (string, error) {
 func TestHashWithoutAtlasOrSettings(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	root := t.TempDir()
-	writeProjectFile(t, root, "migrations/README.md", "user placeholder")
+	writeProjectFile(t, root, "database/migrations/README.md", "user placeholder")
 	commands := hashCommands(t, root)
 
 	// An empty directory gets no atlas.sum.
 	if output, err := runHash(commands); err != nil || !strings.Contains(output, "nothing to hash") {
 		t.Fatalf("hash of an empty directory = %q, %v", output, err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "migrations", "atlas.sum")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, "database/migrations", "atlas.sum")); !os.IsNotExist(err) {
 		t.Fatalf("atlas.sum created for an empty directory: %v", err)
 	}
 
 	// Hand-written SQL without atlas.sum: the explicit hash creates it.
-	writeProjectFile(t, root, "migrations/20261101000000_create_a.sql", "CREATE TABLE a (id int);\n")
-	if output, err := runHash(commands); err != nil || !strings.Contains(output, "updated migrations/atlas.sum for 1 migration(s)") {
+	writeProjectFile(t, root, "database/migrations/20261101000000_create_a.sql", "CREATE TABLE a (id int);\n")
+	if output, err := runHash(commands); err != nil || !strings.Contains(output, "updated database/migrations/atlas.sum for 1 migration(s)") {
 		t.Fatalf("first hash = %q, %v", output, err)
 	}
 	first := atlastest.Snapshot(t, root)
-	if !strings.Contains(first["migrations/atlas.sum"], "20261101000000_create_a.sql h1:") {
-		t.Fatalf("atlas.sum = %q", first["migrations/atlas.sum"])
+	if !strings.Contains(first["database/migrations/atlas.sum"], "20261101000000_create_a.sql h1:") {
+		t.Fatalf("atlas.sum = %q", first["database/migrations/atlas.sum"])
 	}
 	if output, err := runHash(commands); err != nil || !strings.Contains(output, "up to date") {
 		t.Fatalf("repeated hash = %q, %v", output, err)
@@ -377,25 +371,25 @@ func TestHashWithoutAtlasOrSettings(t *testing.T) {
 	}
 
 	// A manual edit changes atlas.sum only; the SQL files stay as written.
-	writeProjectFile(t, root, "migrations/20261101000000_create_a.sql", "CREATE TABLE a (id bigint);\n")
-	writeProjectFile(t, root, "migrations/20261101000001_index.notx.sql", "CREATE INDEX CONCURRENTLY a_id ON a (id);\n")
+	writeProjectFile(t, root, "database/migrations/20261101000000_create_a.sql", "CREATE TABLE a (id bigint);\n")
+	writeProjectFile(t, root, "database/migrations/20261101000001_index.notx.sql", "CREATE INDEX CONCURRENTLY a_id ON a (id);\n")
 	if _, err := runHash(commands); err != nil {
 		t.Fatal(err)
 	}
 	second := atlastest.Snapshot(t, root)
-	if second["migrations/atlas.sum"] == first["migrations/atlas.sum"] ||
-		second["migrations/20261101000000_create_a.sql"] != "CREATE TABLE a (id bigint);\n" ||
-		second["migrations/20261101000001_index.notx.sql"] != "CREATE INDEX CONCURRENTLY a_id ON a (id);\n" ||
-		second["migrations/README.md"] != "user placeholder" {
+	if second["database/migrations/atlas.sum"] == first["database/migrations/atlas.sum"] ||
+		second["database/migrations/20261101000000_create_a.sql"] != "CREATE TABLE a (id bigint);\n" ||
+		second["database/migrations/20261101000001_index.notx.sql"] != "CREATE INDEX CONCURRENTLY a_id ON a (id);\n" ||
+		second["database/migrations/README.md"] != "user placeholder" {
 		t.Fatalf("after hash: %v", second)
 	}
 }
 
 func TestHashWritesNothingOnInvalidFileName(t *testing.T) {
 	root := t.TempDir()
-	writeProjectFile(t, root, "migrations/20261101000000_create_a.sql", "SELECT 1;")
-	writeProjectFile(t, root, "migrations/atlas.sum", "h1:stale\n")
-	writeProjectFile(t, root, "migrations/add_b.sql", "SELECT 2;")
+	writeProjectFile(t, root, "database/migrations/20261101000000_create_a.sql", "SELECT 1;")
+	writeProjectFile(t, root, "database/migrations/atlas.sum", "h1:stale\n")
+	writeProjectFile(t, root, "database/migrations/add_b.sql", "SELECT 2;")
 	before := atlastest.Snapshot(t, root)
 	if _, err := runHash(hashCommands(t, root)); err == nil || !strings.Contains(err.Error(), "nothing was written") {
 		t.Fatalf("hash error = %v", err)

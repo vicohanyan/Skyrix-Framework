@@ -3,5 +3,4 @@ go 1.27
 use (
 	.
 	./integration
-	./template
 )

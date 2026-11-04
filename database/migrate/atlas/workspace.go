@@ -73,7 +73,7 @@ func OpenWorkspace(root string) (*Workspace, error) {
 }
 
 func (w *Workspace) copyIn() error {
-	if err := os.Mkdir(w.Dir(), 0o755); err != nil {
+	if err := os.MkdirAll(w.Dir(), 0o755); err != nil {
 		return fmt.Errorf("create migration workspace: %w", err)
 	}
 	for _, name := range w.files {
@@ -209,9 +209,9 @@ func (w *Workspace) Publish(created []string, sum []byte) (result error) {
 	}
 
 	var (
-		createdDir bool
-		written    []string
-		temps      []string
+		createdDirs []string
+		written     []string
+		temps       []string
 	)
 	defer func() {
 		for _, temp := range temps {
@@ -225,18 +225,26 @@ func (w *Workspace) Publish(created []string, sum []byte) (result error) {
 				result = errors.Join(result, fmt.Errorf("remove %s: %w", written[i], err))
 			}
 		}
-		if createdDir {
-			os.Remove(dir)
+		for i := len(createdDirs) - 1; i >= 0; i-- {
+			os.Remove(createdDirs[i])
 		}
 	}()
 
-	if _, err := os.Lstat(dir); os.IsNotExist(err) {
-		if err := os.Mkdir(dir, 0o755); err != nil {
-			return fmt.Errorf("create %s: %w", MigrationsDir, err)
+	var missing []string
+	for current := dir; current != w.root; current = filepath.Dir(current) {
+		if _, err := os.Lstat(current); os.IsNotExist(err) {
+			missing = append(missing, current)
+		} else if err != nil {
+			return err
+		} else {
+			break
 		}
-		createdDir = true
-	} else if err != nil {
-		return err
+	}
+	for i := len(missing) - 1; i >= 0; i-- {
+		if err := os.Mkdir(missing[i], 0o755); err != nil {
+			return fmt.Errorf("create migrations directory: %w", err)
+		}
+		createdDirs = append(createdDirs, missing[i])
 	}
 	stage := func(data []byte) (string, error) {
 		temp, err := writeTemp(dir, data, 0o644)
@@ -334,15 +342,16 @@ func readOptional(path string) ([]byte, bool, error) {
 }
 
 func rejectSymlink(path string) error {
-	info, err := os.Lstat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
+	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("migration path is a symlink: %s", current)
+		}
+		if filepath.Dir(current) == current {
 			return nil
 		}
-		return err
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("symlink is unsupported: %s", path)
-	}
-	return nil
 }

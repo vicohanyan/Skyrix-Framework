@@ -8,6 +8,6 @@ import (
 type {{.Type}}Seeder struct{}
 func New{{.Type}}Seeder() *{{.Type}}Seeder { return &{{.Type}}Seeder{} }
 
-// Seed must remain idempotent: it runs for db seed and db automigrate.
+// Seed must remain idempotent: it runs for db seed.
 func (*{{.Type}}Seeder) Seed(ctx context.Context) error { return nil }
 var _ dbcmd.Seeder = (*{{.Type}}Seeder)(nil)
