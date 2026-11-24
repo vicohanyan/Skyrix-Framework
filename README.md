@@ -240,7 +240,7 @@ use the same `config.Section` loader; the former `config=Field` option is remove
 ## Explicit platform composition
 
 `cmd/platformgen` generates independent driver sets in the application's
-`providers/platform_gen.go`, loading typed driver config via `config.Section`. It generates no
+`internal/providers/platform_gen.go`, loading typed driver config via `config.Section`. It generates no
 shared platform constructor or all-driver command list. Select individual sets
 in each binary's `wire.Build`, and pass only the selected typed modules to an
 application-owned platform provider. Console command selection is explicit and
@@ -274,7 +274,9 @@ go run ./cmd/cobra platform add <driver-package>
 go run ./cmd/cobra platform remove <driver-package>
 ```
 
-Run these from Template (or pass `--dir <providers-directory>`). Add/remove update
+Run these from the project root. The tooling detects the Template layout
+`internal/providers/` and the legacy layout `providers/`. If both directories
+exist, use `--dir <providers-directory>` to select the target. Add/remove update
 only active declarations in `platform.go` and independent sets/config metadata in
 `platform_gen.go`. Repeated adds and missing removals print `No changes.` Invalid
 input is checked before publishing either file. Remove preserves user config,
@@ -329,13 +331,17 @@ Existing CamelCase input is accepted, with its remaining case preserved in Go
 identifiers; its CLI name is simply lowercased. Names with the same normalized
 file/type conflict rather than overwrite each other.
 
+The table shows the canonical `internal/providers/` layout. Applications with
+only `providers/` remain supported. A generator that edits application
+providers fails before writing if both directories exist.
+
 | Generator | Output and registration |
 | --- | --- |
-| domain | `provider.go` and package docs under dto/entity/interfaces/repository/services/unitOfWork; adds its ProviderSet to `providers/domains.go`'s DomainProviderSet and ConsoleDomainProviderSet |
+| domain | `provider.go` and package docs under dto/entity/interfaces/repository/services/unitOfWork; adds its ProviderSet to `internal/providers/domains.go`'s DomainProviderSet and ConsoleDomainProviderSet |
 | entity | Model and constructor in the domain's entity package; register migration models explicitly in `tools/schemaloader/main.go` |
 | repository/service | Concrete skeleton and constructor in the domain's repository/services package; adds constructor to its ProviderSet |
 | uow | `make uow order/CreateOrder` creates `unitOfWork/createOrderUOW.go`, `CreateOrderUOW`, constructor and Execute(ctx) with WithinTransaction; registers only the domain constructor |
-| handler | BaseHandler-based HTTP skeleton in `internal/handlers`; adds constructor and Handlers field in `providers/handlers.go`; no route is added |
+| handler | BaseHandler-based HTTP skeleton in `internal/handlers`; adds constructor and Handlers field in `internal/providers/handlers.go`; no route is added |
 | command | console.Command factory in `internal/commands`; registers in `providers.ProvideConsoleCommands`, receiving the existing lazy application graph |
 | command --db | Registers in `providers.ProvideConsoleDatabaseCommands`, receiving the existing lazy database graph; help/completion never build it |
 | job | Job implementation in `internal/jobs`; constructor in both JobProviderSet and ConsoleJobProviderSet, field in Jobs, and registration in ProvideRegisteredJobsRegistry |
@@ -364,7 +370,7 @@ the generator does not invent or rewrite arbitrary composition code.
 After changing providers, job bundles or seeder signatures, explicitly run:
 
 ```sh
-go tool wire gen ./cmd/http ./cmd/cobra ./cmd/worker
+go tool wire gen -generate_command 'go tool wire' ./cmd/http ./cmd/cobra ./cmd/worker
 go test ./...
 go build ./...
 ```
@@ -582,7 +588,7 @@ replace gitlab.com/skyrix-lib/tenant v0.0.0 => /var/www/skyrix-tenant-lib
 ```sh
 export GOWORK=/tmp/skyrix-dev/go.work
 # Run in Template after providers or dependency signatures change:
-go tool wire gen ./cmd/http ./cmd/cobra ./cmd/worker
+go tool wire gen -generate_command 'go tool wire' ./cmd/http ./cmd/cobra ./cmd/worker
 # Run separately in Framework, Template, and framework/integration:
 go test -count=1 ./...
 go vet ./...
@@ -594,7 +600,7 @@ The integration harness uses the sibling `framework-template` by default;
 external workspace. No tool installs dependencies or Atlas on the user's behalf.
 Live PostgreSQL/Redis checks remain opt-in and are deferred until the Menu move.
 
-Registrations belong to `providers/commands.go` and `providers/database.go`.
+Registrations belong to `internal/providers/commands.go` and `internal/providers/database.go`.
 Seeder implementations belong to `database/seeders`. SQL migrations, `embed.go`
 and `atlas.sum` belong to `database/migrations`. `db automigrate` and `dbcmd.Models`
 have been removed. Keep `db seed`, the SQL runner, and optional `db migrate:diff`.

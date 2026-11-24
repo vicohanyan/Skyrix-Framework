@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 
 // Exercise real platformgen + Wire with two declarations in the same providers
 // package. Imports are shared intentionally; construction and lifecycle are not.
-// The fixture reuses the Template's go.mod, internal/config and providers/auth.go
+// The fixture reuses the Template's go.mod, internal/config and internal/providers/auth.go
 // (with the external Auth library) under another module path.
 func TestPlatformDriverSelection(t *testing.T) {
 	l := projectLayout(t)
@@ -96,7 +97,7 @@ func (component) Stop(context.Context) error {return nil}
 		write(name+"/platform/module.go", strings.ReplaceAll(strings.ReplaceAll(driver, "{{name}}", name), "{{NAME}}", strings.ToUpper(name)))
 		write(name+"/platform/manifest.yaml", "name: "+name+"\nconfig_key: platform."+name+"\nconfig_example: |\n  enabled: false\n")
 	}
-	write("providers/platform.go", `package providers
+	write("internal/providers/platform.go", `package providers
 import (
  first "example.com/selection/first/platform"
  second "example.com/selection/second/platform"
@@ -119,7 +120,7 @@ import (
  "github.com/goforj/wire"
  "gitlab.com/skyrix-lib/framework/kernel"
  "example.com/selection/internal/config"
- "example.com/selection/providers"
+ "example.com/selection/internal/providers"
 )
 func build()(*kernel.Platform,error){
  wire.Build(config.New,providers.`+title+`platformSet,providers.Provide`+title+`Platform)
@@ -131,7 +132,7 @@ import (
  "context"
  "os"
  "example.com/selection/internal/probe"
- "example.com/selection/providers"
+ "example.com/selection/internal/providers"
  "gitlab.com/skyrix-lib/framework/cobra/console"
  "gitlab.com/skyrix-lib/framework/cobra/platformcmd"
  "gitlab.com/skyrix-lib/framework/cobra/configcmd"
@@ -154,11 +155,11 @@ func main(){
 `)
 	}
 
-	authProviders, err := os.ReadFile(filepath.Join(template, "providers/auth.go"))
+	authProviders, err := os.ReadFile(filepath.Join(template, "internal/providers/auth.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	write("providers/auth.go", strings.ReplaceAll(string(authProviders), "gitlab.com/skyrix-lib/template", "example.com/selection"))
+	write("internal/providers/auth.go", strings.ReplaceAll(string(authProviders), "gitlab.com/skyrix-lib/template", "example.com/selection"))
 	write("cmd/jwt/wire.go", `//go:build wireinject
 package main
 import (
@@ -168,7 +169,7 @@ import (
  "gitlab.com/skyrix-lib/auth/middleware"
  "github.com/redis/go-redis/v9"
  engineredis "gitlab.com/skyrix-lib/framework/engine/redis"
- "example.com/selection/providers"
+ "example.com/selection/internal/providers"
 )
 func legacy(cfg *service.Config, client *redis.Client, root engineredis.Keyspace)(*middleware.AuthMiddleware,func(),error){wire.Build(newResource,newLogger,providers.AuthProviderSet);return nil,nil,nil}
 func revoking(cfg *service.Config, client *redis.Client, root engineredis.Keyspace)(*middleware.AuthMiddleware,func(),error){wire.Build(newResource,newLogger,providers.AuthRevocationSet);return nil,nil,nil}
@@ -214,12 +215,12 @@ func main(){
 	run(template, nil, "go", "build", "-o", generator, "gitlab.com/skyrix-lib/framework/cmd/platformgen")
 	wire := strings.TrimSpace(run(dir, nil, "go", "tool", "-n", "wire"))
 	generate := func() {
-		run(filepath.Join(dir, "providers"), nil, generator)
+		run(filepath.Join(dir, "internal", "providers"), nil, generator)
 		run(dir, nil, wire, "gen", "./cmd/first", "./cmd/second", "./cmd/jwt")
 	}
 	generate()
 	run(dir, nil, "go", "run", "./cmd/jwt")
-	paths := []string{"providers/platform_gen.go", "cmd/first/wire_gen.go", "cmd/second/wire_gen.go", "cmd/jwt/wire_gen.go"}
+	paths := []string{"internal/providers/platform_gen.go", "cmd/first/wire_gen.go", "cmd/second/wire_gen.go", "cmd/jwt/wire_gen.go"}
 	before := map[string]string{}
 	for _, path := range paths {
 		data, err := os.ReadFile(filepath.Join(dir, path))
@@ -274,7 +275,7 @@ func main(){
 	write("config/user.yaml", "platform:\n  second:\n    password: keep-me\n")
 	write("internal/domain/user.go", "package domain\n")
 	preserved := map[string]string{}
-	for _, path := range []string{"go.mod", "go.sum", "config/user.yaml", "internal/domain/user.go", "providers/platform.go", "cmd/first/wire.go", "cmd/second/wire.go", "cmd/first/wire_gen.go", "cmd/second/wire_gen.go"} {
+	for _, path := range []string{"go.mod", "go.sum", "config/user.yaml", "internal/domain/user.go", "internal/providers/platform.go", "cmd/first/wire.go", "cmd/second/wire.go", "cmd/first/wire_gen.go", "cmd/second/wire_gen.go"} {
 		data, err := os.ReadFile(filepath.Join(dir, path))
 		if err != nil {
 			t.Fatal(err)
@@ -295,10 +296,10 @@ func main(){
 		if out, err := cmd.CombinedOutput(); err == nil {
 			t.Fatalf("accepted %s: %s", bad, out)
 		}
-		for _, path := range []string{"providers/platform.go", "providers/platform_gen.go"} {
+		for _, path := range []string{"internal/providers/platform.go", "internal/providers/platform_gen.go"} {
 			data, _ := os.ReadFile(filepath.Join(dir, path))
 			want := preserved[path]
-			if path == "providers/platform_gen.go" {
+			if path == "internal/providers/platform_gen.go" {
 				want = before[path]
 			}
 			if string(data) != want {
@@ -322,9 +323,9 @@ func main(){
 		if out, err := cmd.CombinedOutput(); err == nil {
 			t.Fatalf("accepted conflicting manifest %q: %s", manifest, out)
 		}
-		source, _ := os.ReadFile(filepath.Join(dir, "providers/platform.go"))
-		generated, _ := os.ReadFile(filepath.Join(dir, "providers/platform_gen.go"))
-		if string(source) != preserved["providers/platform.go"] || string(generated) != before["providers/platform_gen.go"] {
+		source, _ := os.ReadFile(filepath.Join(dir, "internal/providers/platform.go"))
+		generated, _ := os.ReadFile(filepath.Join(dir, "internal/providers/platform_gen.go"))
+		if string(source) != preserved["internal/providers/platform.go"] || string(generated) != before["internal/providers/platform_gen.go"] {
 			t.Fatal("invalid manifest changed files")
 		}
 	}
@@ -332,8 +333,8 @@ func main(){
 	if !strings.Contains(output, "No changes") {
 		t.Fatal(output)
 	}
-	genPath := filepath.Join(dir, "providers/platform_gen.go")
-	savedPath := filepath.Join(dir, "providers/saved.generated")
+	genPath := filepath.Join(dir, "internal/providers/platform_gen.go")
+	savedPath := filepath.Join(dir, "internal/providers/saved.generated")
 	if err := os.Rename(genPath, savedPath); err != nil {
 		t.Fatal(err)
 	}
@@ -346,8 +347,8 @@ func main(){
 	if out, err := failedRemove.CombinedOutput(); err == nil {
 		t.Fatalf("accepted directory as generated file: %s", out)
 	}
-	data, _ := os.ReadFile(filepath.Join(dir, "providers/platform.go"))
-	if string(data) != preserved["providers/platform.go"] {
+	data, _ := os.ReadFile(filepath.Join(dir, "internal/providers/platform.go"))
+	if string(data) != preserved["internal/providers/platform.go"] {
 		t.Fatal("failed publication changed declarations")
 	}
 	if err := os.Remove(genPath); err != nil {
@@ -361,7 +362,7 @@ func main(){
 	if strings.Contains(output, "second") {
 		t.Fatal(output)
 	}
-	generated, _ := os.ReadFile(filepath.Join(dir, "providers/platform_gen.go"))
+	generated, _ := os.ReadFile(filepath.Join(dir, "internal/providers/platform_gen.go"))
 	if strings.Contains(string(generated), "SecondplatformSet") {
 		t.Fatal("removed set retained")
 	}
@@ -373,7 +374,7 @@ func main(){
 	for path, want := range preserved {
 		data, err := os.ReadFile(filepath.Join(dir, path))
 		got := string(data)
-		if path == "providers/platform.go" {
+		if path == "internal/providers/platform.go" {
 			declaration := "//skyrix:platform example.com/selection/second/platform\n"
 			got = strings.ReplaceAll(got, declaration, "")
 			want = strings.ReplaceAll(want, declaration, "")
@@ -382,9 +383,27 @@ func main(){
 			t.Fatalf("changed user file %s", path)
 		}
 	}
-	generated, _ = os.ReadFile(filepath.Join(dir, "providers/platform_gen.go"))
-	if string(generated) != before["providers/platform_gen.go"] {
+	generated, _ = os.ReadFile(filepath.Join(dir, "internal/providers/platform_gen.go"))
+	if string(generated) != before["internal/providers/platform_gen.go"] {
 		t.Fatal("remove/add generation differs")
 	}
 
+	// The already-built Console must also operate on projects with the legacy layout.
+	legacyDir := filepath.Join(dir, "providers")
+	if err := os.Rename(filepath.Join(dir, "internal", "providers"), legacyDir); err != nil {
+		t.Fatal(err)
+	}
+	driverPath := "example.com/selection/second/platform"
+	run(dir, nil, executable, "platform", "remove", driverPath)
+	if output := run(dir, nil, executable, "platform", "list"); strings.Contains(output, driverPath) {
+		t.Fatal(output)
+	}
+	run(dir, nil, executable, "platform", "add", driverPath)
+	if output := run(dir, nil, executable, "platform", "list"); !strings.Contains(output, driverPath) {
+		t.Fatal(output)
+	}
+	legacyGenerated, err := os.ReadFile(filepath.Join(legacyDir, "platform_gen.go"))
+	if err != nil || !bytes.Equal(legacyGenerated, generated) {
+		t.Fatalf("legacy layout produced different platform adapters: %v", err)
+	}
 }

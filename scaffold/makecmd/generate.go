@@ -125,6 +125,14 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 	if selected.domain == "" {
 		data.DomainImport = ""
 	}
+	var providersDir string
+	switch kind {
+	case "domain", "handler", "command", "job", "seeder":
+		providersDir, err = support.ApplicationProvidersDir(root)
+		if err != nil {
+			return "", err
+		}
+	}
 	create := func(stub, path string) error {
 		content, err := renderStub(op, stub, data, true)
 		if err != nil {
@@ -152,7 +160,7 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 				return "", err
 			}
 		}
-		if err := op.edit("providers/domains.go", func(e *editor) error {
+		if err := op.edit(filepath.Join(providersDir, "domains.go"), func(e *editor) error {
 			alias, err := e.importName(domainImport, strings.ToLower(selected.domainType))
 			if err != nil {
 				return err
@@ -196,7 +204,7 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 		if err := create(kind, filepath.Join("internal/handlers", data.Var+"Handler.go")); err != nil {
 			return "", err
 		}
-		if err := op.edit("providers/handlers.go", func(e *editor) error {
+		if err := op.edit(filepath.Join(providersDir, "handlers.go"), func(e *editor) error {
 			alias, err := e.importName(module+"/internal/handlers", "handlers")
 			if err != nil {
 				return err
@@ -216,7 +224,7 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 		if err := create(stub, filepath.Join("internal/commands", data.Var+"Command.go")); err != nil {
 			return "", err
 		}
-		if err := op.edit("providers/commands.go", func(e *editor) error {
+		if err := op.edit(filepath.Join(providersDir, "commands.go"), func(e *editor) error {
 			return e.addCommand(module, list, data.Type, db)
 		}); err != nil {
 			return "", err
@@ -225,7 +233,7 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 		if err := create(kind, filepath.Join("internal/jobs", data.Var+"Job.go")); err != nil {
 			return "", err
 		}
-		if err := op.edit("providers/jobs.go", func(e *editor) error {
+		if err := op.edit(filepath.Join(providersDir, "jobs.go"), func(e *editor) error {
 			alias, err := e.importName(module+"/internal/jobs", "jobs")
 			if err != nil {
 				return err
@@ -246,7 +254,7 @@ func (c *MakeCommand) generate(kind, raw string, db bool) (string, error) {
 		if err := create(kind, filepath.Join("database/seeders", data.Var+"Seeder.go")); err != nil {
 			return "", err
 		}
-		if err := op.edit("providers/database.go", func(e *editor) error {
+		if err := op.edit(filepath.Join(providersDir, "database.go"), func(e *editor) error {
 			alias, err := e.importName(module+"/database/seeders", "seeders")
 			if err != nil {
 				return err

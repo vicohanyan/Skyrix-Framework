@@ -176,7 +176,24 @@ func golden(t *testing.T, name, got string) {
 	}
 }
 func TestAllGeneratorsGolden(t *testing.T) {
-	root := registrationProject(t)
+	for _, layout := range []string{"providers", "internal/providers"} {
+		t.Run(layout, func(t *testing.T) {
+			root := registrationProject(t)
+			if layout == "internal/providers" {
+				if err := os.MkdirAll(filepath.Join(root, "internal"), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(filepath.Join(root, "providers"), filepath.Join(root, layout)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			checkAllGeneratorsGolden(t, root)
+		})
+	}
+}
+
+func checkAllGeneratorsGolden(t *testing.T, root string) {
+	t.Helper()
 	maker := testMaker(root)
 	for _, args := range allActions {
 		if _, err := executeScaffoldCommand(maker.Command(), args...); err != nil {
@@ -194,10 +211,21 @@ func TestAllGeneratorsGolden(t *testing.T) {
 			paths = append(paths, path)
 		}
 	}
-	sort.Strings(paths)
+	goldenPath := func(path string) string {
+		if strings.HasPrefix(path, "internal/providers/") {
+			return strings.TrimPrefix(path, "internal/")
+		}
+		return path
+	}
+	if _, err := os.Stat(filepath.Join(root, "internal", "providers")); err == nil {
+		if _, err := os.Stat(filepath.Join(root, "providers")); !os.IsNotExist(err) {
+			t.Fatalf("canonical generation touched the legacy directory: %v", err)
+		}
+	}
+	sort.Slice(paths, func(i, j int) bool { return goldenPath(paths[i]) < goldenPath(paths[j]) })
 	var result strings.Builder
 	for _, path := range paths {
-		fmt.Fprintf(&result, "-- %s --\n%s\n", path, snapshot[path])
+		fmt.Fprintf(&result, "-- %s --\n%s\n", goldenPath(path), snapshot[path])
 	}
 	golden(t, "all", result.String())
 	// A second operation conflicts without touching any existing or generated file.
@@ -208,6 +236,43 @@ func TestAllGeneratorsGolden(t *testing.T) {
 		assertUnchanged(t, root, snapshot)
 	}
 }
+func TestApplicationProvidersResolutionPreservesFiles(t *testing.T) {
+	t.Run("ambiguous", func(t *testing.T) {
+		root := registrationProject(t)
+		writeProject(t, root, "internal/providers/domains.go", "package providers\n")
+		before := projectSnapshot(t, root)
+		maker := testMaker(root)
+		for _, args := range [][]string{
+			{"domain", "billing"}, {"command", "sync"}, {"command", "sync", "--db"},
+			{"job", "refresh"}, {"seeder", "currencies"},
+		} {
+			if _, err := executeScaffoldCommand(maker.Command(), args...); err == nil ||
+				!strings.Contains(err.Error(), "ambiguous application providers layout") {
+				t.Fatalf("%v: got %v", args, err)
+			}
+			assertUnchanged(t, root, before)
+		}
+	})
+	t.Run("missing", func(t *testing.T) {
+		root := t.TempDir()
+		writeProject(t, root, "go.mod", "module example.com/app\n")
+		maker := testMaker(root)
+		before := projectSnapshot(t, root)
+		if _, err := executeScaffoldCommand(maker.Command(), "domain", "billing"); err == nil ||
+			!strings.Contains(err.Error(), "application providers directory not found") {
+			t.Fatalf("got %v", err)
+		}
+		assertUnchanged(t, root, before)
+
+		if _, err := executeScaffoldCommand(maker.Command(), "stubs"); err != nil {
+			t.Fatalf("make stubs should not require providers: %v", err)
+		}
+		if _, err := executeScaffoldCommand(maker.Command(), "migration", "add_search"); err != nil {
+			t.Fatalf("make migration should not require providers: %v", err)
+		}
+	})
+}
+
 func TestUnsupportedRegistrationIsAtomic(t *testing.T) {
 	for _, test := range []struct{ kind, raw, file, bad string }{
 		{"domain", "billing", "providers/domains.go", "package providers\nvar DomainProviderSet = custom()\n"},

@@ -85,7 +85,7 @@ func TestSeparateTemplateScaffolding(t *testing.T) {
 		writeFixture(t, dir, "stubs/skyrix/"+name+".stub", "// Project override: preserve me.\n"+source)
 	}
 	// Existing comments and independent files must survive AST registration.
-	for _, name := range []string{"providers/commands.go", "providers/database.go"} {
+	for _, name := range []string{"internal/providers/commands.go", "internal/providers/database.go"} {
 		path := filepath.Join(dir, name)
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -93,7 +93,7 @@ func TestSeparateTemplateScaffolding(t *testing.T) {
 		}
 		writeFixture(t, dir, name, "// User registration comment.\n"+string(data))
 	}
-	writeFixture(t, dir, "providers/user.go", "package providers\n// User code must stay byte-exact.\nconst userValue = 42\n")
+	writeFixture(t, dir, "internal/providers/user.go", "package providers\n// User code must stay byte-exact.\nconst userValue = 42\n")
 	before := snapshot(t, dir)
 	actions := [][]string{
 		{"domain", "sales/order_flow"}, {"entity", "sales/order_flow/line_item"},
@@ -107,14 +107,14 @@ func TestSeparateTemplateScaffolding(t *testing.T) {
 	}
 	after := snapshot(t, dir)
 	for name, source := range before {
-		if name == "providers/commands.go" || name == "providers/database.go" || name == "providers/domains.go" || name == "providers/handlers.go" || name == "providers/jobs.go" {
+		if name == "internal/providers/commands.go" || name == "internal/providers/database.go" || name == "internal/providers/domains.go" || name == "internal/providers/handlers.go" || name == "internal/providers/jobs.go" {
 			continue
 		}
 		if after[name] != source {
 			t.Fatalf("generator changed user file %s", name)
 		}
 	}
-	for _, name := range []string{"providers/commands.go", "providers/database.go"} {
+	for _, name := range []string{"internal/providers/commands.go", "internal/providers/database.go"} {
 		if !strings.Contains(after[name], "// User registration comment.") {
 			t.Fatalf("lost comment in %s", name)
 		}
@@ -131,8 +131,8 @@ func TestSeparateTemplateScaffolding(t *testing.T) {
 		t.Fatal("legacy database directory created")
 	}
 	// Failure after preparing a generated command must publish neither file nor import.
-	commands := after["providers/commands.go"]
-	writeFixture(t, dir, "providers/commands.go", strings.Replace(commands, "func ProvideConsoleCommands", "func UserCommands", 1))
+	commands := after["internal/providers/commands.go"]
+	writeFixture(t, dir, "internal/providers/commands.go", strings.Replace(commands, "func ProvideConsoleCommands", "func UserCommands", 1))
 	failedBefore := snapshot(t, dir)
 	cmd := exec.Command(binary, "make", "command", "must_rollback")
 	cmd.Dir = dir
@@ -143,12 +143,12 @@ func TestSeparateTemplateScaffolding(t *testing.T) {
 	if !reflect.DeepEqual(failedBefore, snapshot(t, dir)) {
 		t.Fatal("failed generation changed user files")
 	}
-	writeFixture(t, dir, "providers/commands.go", commands)
+	writeFixture(t, dir, "internal/providers/commands.go", commands)
 	// All selected graphs must still compile and Wire must be byte-repeatable.
 	wire := strings.TrimSpace(run("go", "tool", "-n", "wire"))
-	run(wire, "gen", "./cmd/http", "./cmd/cobra", "./cmd/worker")
+	run(wire, "gen", "-generate_command", "go tool wire", "./cmd/http", "./cmd/cobra", "./cmd/worker")
 	generated := snapshot(t, dir)
-	run(wire, "gen", "./cmd/http", "./cmd/cobra", "./cmd/worker")
+	run(wire, "gen", "-generate_command", "go tool wire", "./cmd/http", "./cmd/cobra", "./cmd/worker")
 	repeated := snapshot(t, dir)
 	for _, name := range []string{"http", "cobra", "worker"} {
 		path := "cmd/" + name + "/wire_gen.go"
@@ -266,7 +266,7 @@ import (
  "testing"
  "strings"
  "gitlab.com/skyrix-lib/framework/database/migrate"
- "MODULE/providers"
+ "MODULE/internal/providers"
 )
 func TestGeneratedMigrationSource(t *testing.T){
  files,err:=migrate.Load(providers.ProvideMigrationSource());if err!=nil{t.Fatal(err)}
@@ -281,14 +281,14 @@ func TestProviderRegistrationFailuresPreserveFiles(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
 			copyTree(t, l.template, root, ".git", "logs", "secret", ".idea")
-			path := "providers/commands.go"
+			path := "internal/providers/commands.go"
 			source := "package providers\nfunc ProvideConsoleCommands() {}\n"
 			args := []string{"command", "ambiguous"}
 			if kind == "command-db" {
 				args = append(args, "--db")
 			}
 			if kind == "seeder" {
-				path = "providers/database.go"
+				path = "internal/providers/database.go"
 				source = "package providers\nfunc Seeders() any { return userSeeders() }\n"
 				args = []string{"seeder", "ambiguous"}
 			}

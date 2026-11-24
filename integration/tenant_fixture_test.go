@@ -19,7 +19,7 @@ func TestTenantFixture(t *testing.T) {
 	l := projectLayout(t)
 	overlay := filepath.Join(l.fixtures, "tenant")
 	for _, name := range []string{
-		"providers/tenant.go", "internal/config/tenant.go",
+		"internal/providers/tenant.go", "internal/config/tenant.go",
 		"cmd/http/wire.go", "cmd/http/tenant_fixture_test.go", "tools/schemaloader/main.go",
 	} {
 		requireFile(t, filepath.Join(overlay, name), "tenant fixture "+name)
@@ -49,12 +49,12 @@ func TestTenantFixture(t *testing.T) {
 	env := workspaceEnv(t, l, dir, true)
 	wire := strings.TrimSpace(goCommand(t, dir, env, "go", "tool", "-n", "wire"))
 	generated := filepath.Join(dir, "cmd/http/wire_gen.go")
-	goCommand(t, dir, env, wire, "gen", "./cmd/http")
+	goCommand(t, dir, env, wire, "gen", "-generate_command", "go tool wire", "./cmd/http")
 	first, err := os.ReadFile(generated)
 	if err != nil {
 		t.Fatal(err)
 	}
-	goCommand(t, dir, env, wire, "gen", "./cmd/http")
+	goCommand(t, dir, env, wire, "gen", "-generate_command", "go tool wire", "./cmd/http")
 	if second, _ := os.ReadFile(generated); string(second) != string(first) {
 		t.Fatal("Wire generation is not repeatable")
 	}
@@ -69,7 +69,7 @@ func TestTenantFixture(t *testing.T) {
 	}
 
 	goCommand(t, dir, env, "go", "build", "./...")
-	goCommand(t, dir, env, "go", "vet", "./cmd/http", "./providers", "./internal/...")
+	goCommand(t, dir, env, "go", "vet", "./cmd/http", "./internal/...")
 	output := goCommand(t, dir, env, "go", "test", "-count=1", "-v", "-run", "TestTenantMiddlewareInGraph", "./cmd/http")
 	if !strings.Contains(output, "--- PASS: TestTenantMiddlewareInGraph") {
 		t.Fatalf("fixture middleware test did not run:\n%s", output)
@@ -98,7 +98,7 @@ func TestDefaultTemplateWithoutTenant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("go list: %v\n%s", err, output)
 	}
-	for _, pkg := range strings.Fields(string(output)) {
+	for pkg := range strings.FieldsSeq(string(output)) {
 		if strings.HasPrefix(pkg, "gitlab.com/skyrix-lib/tenant") {
 			t.Fatalf("default Template imports %s", pkg)
 		}

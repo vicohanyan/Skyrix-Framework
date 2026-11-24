@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"gitlab.com/skyrix-lib/framework/cobra/console"
+	"gitlab.com/skyrix-lib/framework/scaffold"
 	"gitlab.com/skyrix-lib/framework/scaffold/platform"
 )
 
@@ -17,7 +18,10 @@ func Command() *cobra.Command {
 		add := action == "add"
 		command := &cobra.Command{Use: action + " <import-path>", Short: action + " a driver declaration", Args: cobra.ExactArgs(1),
 			RunE: console.Standalone(func(cmd *cobra.Command, args []string) error {
-				dir, _ := cmd.Flags().GetString("dir")
+				dir, err := providersDir(cmd)
+				if err != nil {
+					return err
+				}
 				changed, err := platform.Change(dir, args[0], add)
 				if err != nil {
 					return err
@@ -33,11 +37,14 @@ func Command() *cobra.Command {
 				return nil
 			}),
 		}
-		command.Flags().String("dir", "providers", "application providers directory")
+		command.Flags().String("dir", "", "application providers directory (auto-detects internal/providers or providers when omitted)")
 		group.AddCommand(command)
 	}
 	command := &cobra.Command{Use: "list", Short: "List declared drivers and config keys", Args: cobra.NoArgs, RunE: console.Standalone(func(cmd *cobra.Command, _ []string) error {
-		dir, _ := cmd.Flags().GetString("dir")
+		dir, err := providersDir(cmd)
+		if err != nil {
+			return err
+		}
 		drivers, err := platform.List(dir)
 		if err != nil {
 			return err
@@ -49,7 +56,18 @@ func Command() *cobra.Command {
 		}
 		return nil
 	})}
-	command.Flags().String("dir", "providers", "application providers directory")
+	command.Flags().String("dir", "", "application providers directory (auto-detects internal/providers or providers when omitted)")
 	group.AddCommand(command)
 	return group
+}
+
+func providersDir(cmd *cobra.Command) (string, error) {
+	if cmd.Flags().Changed("dir") {
+		return cmd.Flags().GetString("dir")
+	}
+	dir, err := scaffold.ApplicationProvidersDir(".")
+	if err != nil {
+		return "", fmt.Errorf("%w; use --dir to select the application providers directory", err)
+	}
+	return dir, nil
 }

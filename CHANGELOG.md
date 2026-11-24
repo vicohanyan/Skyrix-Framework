@@ -15,6 +15,13 @@ v0.2.x must be migrated before upgrading. Modules released for v0.3.0 do not
 support v0.2.x.
 
 
+### Application providers layout
+
+- Application scaffolding and Platform CLI detect the canonical
+  `internal/providers/` layout and the legacy `providers/` layout. If both
+  exist, automatic selection fails before modifying files. Platform commands
+  retain `--dir` for explicit selection.
+
 ### Separate Template and explicit provider composition
 
 - Use the separate `framework-template` repository in the integration harness and

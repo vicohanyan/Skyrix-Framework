@@ -82,6 +82,7 @@ func TestFoundationForbiddenPaths(t *testing.T) {
 		module + "/cobra/console", module + "/database/migrate",
 		module + "/scaffold/makecmd", module + "/cmd/platformgen",
 		"gitlab.com/skyrix-lib/template/providers",
+		"gitlab.com/skyrix-lib/template/internal/providers",
 		"gitlab.com/skyrix-lib/tenant/middleware",
 		"gitlab.com/skyrix-lib/eventbus/platform",
 		"github.com/jackc/pgx/v5/stdlib", "github.com/redis/go-redis/v9",

@@ -18,7 +18,7 @@ uses the framework through an external local `go.work`.
 ## Layers
 
 ```text
-template (copied)     cmd/http · cmd/cobra · cmd/worker · providers · internal/domain/...
+template (copied)     cmd/http · cmd/cobra · cmd/worker · internal/providers · internal/domain/...
                           │ imports
 extensions            external Auth · external Tenant (application composition)
                           │
@@ -188,14 +188,14 @@ independent platform Wire adapters), `internal/depcheck` (dependency tests).
 
 A platform module (platform driver, an optional core such as EventBus)
 implements `kernel.Module` and may implement `cobra.CommandProvider`. The
-application declares its modules in `providers/platform.go`, for example:
+application declares its modules in `internal/providers/platform.go`, for example:
 
 ```go
 //go:generate go run gitlab.com/skyrix-lib/framework/cmd/platformgen
 //skyrix:platform gitlab.com/skyrix-lib/eventbus/platform
 ```
 
-`go generate` runs `cmd/platformgen`, which writes `providers/platform_gen.go`
+`go generate ./internal/providers` runs `cmd/platformgen` in Template, which writes `internal/providers/platform_gen.go`
 with an independent Wire set for every directive, for example
 `EventbusplatformSet`. Set names capitalize the existing import alias and append
 `Set`. Each set includes only that driver's `ProviderSet` and a typed config
@@ -209,7 +209,7 @@ fresh section defaults for config:env and never loads settings or calls Validate
 No shared `PlatformSet`, platform constructor or command list is generated.
 
 The application owns `ProvideHTTPPlatform` and `ProvideWorkerPlatform` in
-`providers/platform.go`. Each binary's `wire.Build` explicitly selects its driver
+`internal/providers/platform.go`. Each binary's `wire.Build` explicitly selects its driver
 sets and corresponding platform provider. Add typed module parameters to that
 provider and pass them to `kernel.NewPlatform` in lifecycle order. The returned
 components join the runtime through `kernel.Platform.Components()`. The template
@@ -242,7 +242,10 @@ runs. Manifest data controls tooling only. Versions live in go.mod.
 `scaffold/platform` parses declarations, validates package contracts and manifests,
 and renders independent sets. `cobra/platformcmd.Command()` exposes standalone
 `platform add <import-path>`, `remove <import-path>`, and `list`, with `--dir`
-(default `providers`). List prints name, config key and import path. Add/remove
+(optional). From the application root, the default is discovered from
+`internal/providers/` or legacy `providers/`. Both directories present require
+an explicit `--dir`. Generators that edit application registration use the same
+lookup and fail on ambiguity. List prints name, config key and import path. Add/remove
 plan and validate all output before writing, stage both files, and restore the
 original declaration on a failed second rename. Repeated adds/missing removes are
 no-ops. They preserve user code, config and domains; they only edit declaration
@@ -393,7 +396,7 @@ graph as test inputs, so run these tests with `-count=1`.
 | | Framework | Template |
 |---|---|---|
 | Distribution | Go module, imported with `go get` | copied into a new repository |
-| Contents | kernel, engine, hosts, extensions, generators | `cmd/*` binaries and Wire graphs, `providers`, `internal/config`, domains, handlers, router, migrations, Compose, Dockerfiles |
+| Contents | kernel, engine, hosts, extensions, generators | `cmd/*` binaries and Wire graphs, `internal/providers`, `internal/config`, domains, handlers, router, migrations, Compose, Dockerfiles |
 | Changes | versioned (v0.3 is not compatible with v0.2.x, see CHANGELOG.md) | owned by the service after copying |
 | Example code | — | `internal/domain/example`, `internal/commands/HelloCommand.go`, `internal/jobs/systemPingJob.go` |
 | Tests | unit tests per package; `integration/` (separate test-only module): Template copies for generators, platform commands and the opt-in Auth/Tenant wiring | tests of the application, its providers, Wire graphs and example domain; no framework fixtures or `testdata` |

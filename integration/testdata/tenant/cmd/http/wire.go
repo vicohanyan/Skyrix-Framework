@@ -7,8 +7,8 @@ import (
 	"net/http"
 
 	"gitlab.com/skyrix-lib/framework/validation"
+	"gitlab.com/skyrix-lib/template/internal/providers"
 	"gitlab.com/skyrix-lib/template/internal/router"
-	"gitlab.com/skyrix-lib/template/providers"
 
 	"github.com/goforj/wire"
 )
